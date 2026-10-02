@@ -3,11 +3,8 @@ import threading
 import fitz
 import pytest
 from PIL import Image
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
 
-from app.database import Base
+from app.database import MongoSession
 from app.services.pricing_service import pricing_service
 from app.services.print_service import print_service
 from app.services.serial_service import (
@@ -20,25 +17,6 @@ from app.models.customer import Customer
 from app.models.order import Order
 from app.models.print_job import PrintJob
 
-TEST_DATABASE_URL = "sqlite:///./test_serial.db"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=NullPool)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    pricing_service.seed_defaults_if_empty(db)
-    yield db
-    db.close()
-    Base.metadata.drop_all(bind=engine)
-    engine.dispose()
-    if os.path.exists("./test_serial.db"):
-        try:
-            os.remove("./test_serial.db")
-        except Exception:
-            pass
 
 
 def _make_order(db, order_id: str, pdf_path: str, customer_id: int = None) -> Order:
@@ -97,7 +75,7 @@ def test_daily_sequence_unique_under_concurrent_threads(setup_db):
         try:
             # Each thread needs its own session/connection, matching how
             # a real request-scoped db session would work.
-            thread_db = TestingSessionLocal()
+            thread_db = MongoSession()
             serial = allocate_daily_sequence(thread_db)
             with lock:
                 results.append(serial)
@@ -123,7 +101,7 @@ def test_queue_sequence_unique_and_monotonic_under_concurrency(setup_db):
     lock = threading.Lock()
 
     def worker():
-        thread_db = TestingSessionLocal()
+        thread_db = MongoSession()
         seq = allocate_queue_sequence(thread_db)
         with lock:
             results.append(seq)

@@ -1,6 +1,9 @@
+import copy
+import threading
 from datetime import datetime
 from typing import Any, Iterable
 
+from pymongo.errors import DuplicateKeyError
 from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
 from sqlalchemy import func
 from sqlalchemy.inspection import inspect as sqlalchemy_inspect
@@ -142,9 +145,34 @@ class MongoQuery:
         self.limit_value = value
         return self
 
+    def _mongo_filter(self, model: type) -> dict[str, Any]:
+        """Translate top-level ==/in_ filters on the model's own columns into a Mongo query.
+
+        Only a pre-filter to avoid loading whole collections; every
+        expression is still re-evaluated in Python afterwards, so anything
+        not translated here stays correct.
+        """
+        query: dict[str, Any] = {}
+        for expression in self.filters:
+            if not isinstance(expression, BinaryExpression):
+                continue
+            left, right = expression.left, expression.right
+            if not (hasattr(left, "key") and hasattr(left, "table") and getattr(left, "class_", None) is model):
+                continue
+            if not hasattr(right, "value"):
+                continue
+            operator_name = expression.operator.__name__
+            if operator_name == "eq" and right.value is not None and not isinstance(right.value, bool) \
+                    and left.key not in query:
+                query[left.key] = right.value
+            elif operator_name == "in_op" and isinstance(right.value, (list, tuple)):
+                query[left.key] = {"$in": list(right.value)}
+        return query
+
     def _items(self) -> list[Any]:
         model = self.model
-        items = [self.session._materialize(model, doc) for doc in self.session.database[_model_collection(model)].find({})]
+        documents = self.session.database[_model_collection(model)].find(self._mongo_filter(model))
+        items = [self.session._materialize(model, doc) for doc in documents]
         for expression in self.filters:
             items = [item for item in items if _evaluate(expression, item, model)]
         for expression, direction in reversed(self.ordering):
@@ -190,31 +218,88 @@ class MongoQuery:
         return self._items()
 
 
+_client: Any = None
+_client_lock = threading.Lock()
+
+
+def get_client() -> Any:
+    """Process-wide MongoClient (pymongo clients are thread-safe and pool connections).
+
+    A ``mongomock://`` URI selects an in-memory MongoDB emulation, used by the
+    automated tests so they exercise the exact same code path as production
+    without any network or second database engine.
+    """
+    global _client
+    with _client_lock:
+        if _client is None:
+            if settings.MONGODB_URI.startswith("mongomock://"):
+                import mongomock
+                _client = mongomock.MongoClient()
+            else:
+                _client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
+        return _client
+
+
+def reset_client() -> None:
+    """Drop the cached client (tests)."""
+    global _client
+    with _client_lock:
+        _client = None
+
+
+def next_id(database: Any, collection: str) -> int:
+    """Atomically allocate the next integer primary key for a collection.
+
+    Replaces the old ``count_documents + 1`` scheme, which collided after
+    deletes and under concurrency. The counter is seeded from the current
+    maximum id so existing data keeps working.
+    """
+    counters = database["_id_counters"]
+    if counters.find_one({"_id": collection}) is None:
+        top = database[collection].find_one({"id": {"$type": "number"}}, sort=[("id", DESCENDING)])
+        seed = int(top["id"]) if top else 0
+        try:
+            counters.insert_one({"_id": collection, "seq": seed})
+        except DuplicateKeyError:
+            pass
+    doc = counters.find_one_and_update({"_id": collection}, {"$inc": {"seq": 1}}, return_document=ReturnDocument.AFTER)
+    return int(doc["seq"])
+
+
 class MongoSession:
+    """SQLAlchemy-session-like facade over MongoDB (see CLAUDE.md for limits).
+
+    Objects loaded through a query remember a snapshot of their stored
+    document; ``commit`` writes back only the fields that actually changed
+    (``$set``), so a stale in-memory copy can no longer clobber unrelated
+    fields that another request updated in the meantime.
+    """
+
     def __init__(self):
-        self.client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
+        self.client = get_client()
         self.database = self.client[settings.MONGODB_DATABASE]
         self._pending: list[Any] = []
-        self._tracked: dict[tuple[type, Any], Any] = {}
+        self._tracked: dict[int, Any] = {}
+        self._snapshots: dict[int, dict[str, Any]] = {}
+        # Identity map: one live object per (model, primary key) per session,
+        # like a real SQLAlchemy session, so code holding an Order sees changes
+        # made by helpers that re-query it.
+        self._identity: dict[tuple[type, Any], Any] = {}
 
     def query(self, *entities: Any) -> MongoQuery:
         return MongoQuery(self, entities)
 
     def add(self, instance: Any) -> None:
-        self._pending.append(instance)
-        self._track(instance)
-
-    def _track(self, instance: Any) -> None:
-        mapper = sqlalchemy_inspect(instance.__class__)
-        primary_key = getattr(instance, mapper.primary_key[0].key, None)
-        self._tracked[(instance.__class__, primary_key)] = instance
+        if id(instance) not in self._snapshots and not any(instance is p for p in self._pending):
+            self._pending.append(instance)
+        self._tracked[id(instance)] = instance
 
     def commit(self) -> None:
-        for instance in self._pending:
-            self._save(instance)
-        self._pending.clear()
-        for instance in self._tracked.values():
-            self._save(instance)
+        pending, self._pending = self._pending, []
+        for instance in pending:
+            self._insert(instance)
+        for instance in list(self._tracked.values()):
+            self._update_if_dirty(instance)
 
     def rollback(self) -> None:
         self._pending.clear()
@@ -222,29 +307,29 @@ class MongoSession:
     def refresh(self, instance: Any) -> None:
         mapper = sqlalchemy_inspect(instance.__class__)
         key_name = mapper.primary_key[0].key
-        key_value = getattr(instance, key_name)
-        document = self.database[_model_collection(instance.__class__)].find_one({key_name: key_value})
+        document = self.database[_model_collection(instance.__class__)].find_one({key_name: getattr(instance, key_name)})
         if document:
             for column in mapper.columns:
                 if column.key in document:
                     setattr(instance, column.key, document[column.key])
-        self._track(instance)
+            self._snapshots[id(instance)] = copy.deepcopy(self._document_for(instance, apply_defaults=False))
+        self._tracked[id(instance)] = instance
 
     def close(self) -> None:
-        self.client.close()
+        # The client is shared process-wide; only drop this session's state.
+        self._pending.clear()
+        self._tracked.clear()
+        self._snapshots.clear()
+        self._identity.clear()
 
-    def _save(self, instance: Any) -> None:
-        model = instance.__class__
-        mapper = sqlalchemy_inspect(model)
-        key_column = mapper.primary_key[0]
-        key_value = getattr(instance, key_column.key, None)
-        if key_value is None:
-            key_value = self.database[_model_collection(model)].count_documents({}) + 1
-            setattr(instance, key_column.key, key_value)
+    # --- internals ---
+
+    def _document_for(self, instance: Any, apply_defaults: bool = True) -> dict[str, Any]:
+        mapper = sqlalchemy_inspect(instance.__class__)
         document = {}
         for column in mapper.columns:
             value = getattr(instance, column.key, None)
-            if value is None and column.default is not None:
+            if value is None and apply_defaults and column.default is not None:
                 default = column.default.arg
                 if callable(default):
                     try:
@@ -255,13 +340,51 @@ class MongoSession:
                     value = default
                 setattr(instance, column.key, value)
             document[column.key] = value
-        self.database[_model_collection(model)].replace_one({key_column.key: key_value}, document, upsert=True)
-        self._track(instance)
+        return document
+
+    def _insert(self, instance: Any) -> None:
+        model = instance.__class__
+        collection = _model_collection(model)
+        key_column = sqlalchemy_inspect(model).primary_key[0]
+        if getattr(instance, key_column.key, None) is None:
+            setattr(instance, key_column.key, next_id(self.database, collection))
+        document = self._document_for(instance)
+        self.database[collection].replace_one({key_column.key: document[key_column.key]}, document, upsert=True)
+        self._snapshots[id(instance)] = copy.deepcopy(document)
+        self._tracked[id(instance)] = instance
+        self._identity[(model, document[key_column.key])] = instance
+
+    def _update_if_dirty(self, instance: Any) -> None:
+        snapshot = self._snapshots.get(id(instance))
+        if snapshot is None:
+            return
+        model = instance.__class__
+        key_name = sqlalchemy_inspect(model).primary_key[0].key
+        document = self._document_for(instance)
+        changed = {k: v for k, v in document.items() if k != key_name and snapshot.get(k) != v}
+        if not changed:
+            return
+        self.database[_model_collection(model)].update_one({key_name: document[key_name]}, {"$set": changed})
+        self._snapshots[id(instance)] = copy.deepcopy(document)
 
     def _materialize(self, model: type, document: dict[str, Any], hydrate_relationships: bool = True) -> Any:
-        values = {column.key: document.get(column.key) for column in sqlalchemy_inspect(model).columns}
-        instance = model(**values)
-        self._track(instance)
+        mapper = sqlalchemy_inspect(model)
+        key_name = mapper.primary_key[0].key
+        values = {column.key: document.get(column.key) for column in mapper.columns}
+        existing = self._identity.get((model, values[key_name]))
+        if existing is not None:
+            # Refresh only attributes the caller has not modified locally.
+            snapshot = self._snapshots.get(id(existing), {})
+            for key, value in values.items():
+                if getattr(existing, key, None) == snapshot.get(key):
+                    setattr(existing, key, value)
+            self._snapshots[id(existing)] = copy.deepcopy(values)
+            instance = existing
+        else:
+            instance = model(**values)
+            self._tracked[id(instance)] = instance
+            self._snapshots[id(instance)] = copy.deepcopy(values)
+            self._identity[(model, values[key_name])] = instance
         if hydrate_relationships:
             self._hydrate_relationships(instance)
         return instance
@@ -319,9 +442,9 @@ class MongoSession:
         return self._materialize(model, document, hydrate_relationships=False)
 
 
+
 def initialize_mongodb() -> None:
-    client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
-    database = client[settings.MONGODB_DATABASE]
+    database = get_client()[settings.MONGODB_DATABASE]
     database.admins.create_index("username", unique=True)
     database.admins.create_index("email", unique=True)
     database.customers.create_index("whatsapp_number")
@@ -333,7 +456,8 @@ def initialize_mongodb() -> None:
     database.webhook_events.create_index("event_id", unique=True)
     database.serial_counters.create_index("date_key", unique=True)
     database.print_jobs.create_index([("status", ASCENDING), ("queue_sequence", ASCENDING)])
-    client.close()
+    database.payments.create_index("razorpay_payment_link_id")
+    database.payments.create_index("razorpay_payment_id")
 
 
 SessionLocal = MongoSession

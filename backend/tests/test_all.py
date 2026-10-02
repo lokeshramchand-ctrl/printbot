@@ -2,10 +2,7 @@ import os
 import fitz
 import pytest
 from PIL import Image
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
-from app.database import Base
+from app.database import MongoSession
 from app.services.document_service import document_service
 from app.services.pricing_service import pricing_service
 from app.services.razorpay_service import razorpay_service
@@ -14,31 +11,6 @@ from app.models.pricing import PricingRule
 from app.models.customer import Customer
 from app.models.order import Order
 
-# Setup test DB.
-# NullPool is required here: the default pooled connection would otherwise
-# survive across tests and keep a handle open on the file that setup_db's
-# teardown deletes, so the next test's CREATE TABLE call would land on a
-# stale connection pointing at an unlinked inode and fail with
-# "attempt to write a readonly database". NullPool opens a fresh
-# connection per checkout, so each test starts clean.
-TEST_DATABASE_URL = "sqlite:///./test_printbot.db"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=NullPool)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    pricing_service.seed_defaults_if_empty(db)
-    yield db
-    db.close()
-    Base.metadata.drop_all(bind=engine)
-    engine.dispose()
-    if os.path.exists("./test_printbot.db"):
-        try:
-            os.remove("./test_printbot.db")
-        except Exception:
-            pass
 
 def test_document_processing_image_to_pdf(tmp_path):
     """Test image creation and PDF conversion."""

@@ -34,8 +34,6 @@ full write-up of alternatives considered):
 """
 from datetime import datetime, timezone
 from pymongo import ReturnDocument
-from sqlalchemy.exc import IntegrityError
-from app.models.serial_counter import SerialCounter
 from app.config import settings
 from app.models.order import Order
 
@@ -53,26 +51,7 @@ def _atomic_increment(db, counter_key: str) -> int:
     caller's) value — silently producing a duplicate serial despite each
     individual UPDATE being correctly atomic. RETURNING closes that gap
     by handing back exactly the row this statement produced, atomically.
-    Supported by SQLite 3.35+ and all supported Postgres versions.
     """
-    if not hasattr(db, "database"):
-      result = db.execute(
-        SerialCounter.__table__.update()
-        .where(SerialCounter.date_key == counter_key)
-        .values(last_value=SerialCounter.last_value + 1)
-        .returning(SerialCounter.last_value)
-      )
-      row = result.first()
-      db.commit()
-      if row is not None:
-        return row[0]
-      try:
-        db.add(SerialCounter(date_key=counter_key, last_value=0))
-        db.commit()
-      except IntegrityError:
-        db.rollback()
-      return _atomic_increment(db, counter_key)
-
     result = db.database.serial_counters.find_one_and_update(
       {"date_key": counter_key},
       {
