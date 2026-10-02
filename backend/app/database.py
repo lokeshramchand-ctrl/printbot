@@ -1,11 +1,9 @@
 import copy
 import threading
-from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
 from pymongo.errors import DuplicateKeyError
 from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
-from sqlalchemy import func
 from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql.elements import BooleanClauseList, BinaryExpression, UnaryExpression
@@ -301,9 +299,6 @@ class MongoSession:
         for instance in list(self._tracked.values()):
             self._update_if_dirty(instance)
 
-    def rollback(self) -> None:
-        self._pending.clear()
-
     def refresh(self, instance: Any) -> None:
         mapper = sqlalchemy_inspect(instance.__class__)
         key_name = mapper.primary_key[0].key
@@ -400,7 +395,6 @@ class MongoSession:
                 "payments": ("payments", "order_id", "id", True),
                 "print_jobs": ("print_jobs", "order_id", "id", True),
                 "history": ("order_status_history", "order_id", "id", True),
-                "uploaded_files": ("uploaded_files", "order_id", "id", True),
             },
             "Customer": {
                 "orders": ("orders", "customer_id", "id", True),
@@ -416,7 +410,6 @@ class MongoSession:
                 "printer": ("printers", "id", "printer_id", False),
             },
             "OrderStatusHistory": {"order": ("orders", "id", "order_id", False)},
-            "UploadedFile": {"order": ("orders", "id", "order_id", False)},
             "WhatsAppMessage": {"customer": ("customers", "id", "customer_id", False)},
         }.get(model.__name__, {})
         for relation_name, (collection, target_key, source_key, many) in relations.items():
@@ -444,20 +437,9 @@ class MongoSession:
 
 
 def initialize_mongodb() -> None:
-    database = get_client()[settings.MONGODB_DATABASE]
-    database.admins.create_index("username", unique=True)
-    database.admins.create_index("email", unique=True)
-    database.customers.create_index("whatsapp_number")
-    database.customers.create_index("telegram_chat_id")
-    database.orders.create_index("print_serial", unique=True, sparse=True)
-    database.orders.create_index([("created_at", DESCENDING)])
-    database.orders.create_index([("current_state", ASCENDING), ("created_at", DESCENDING)])
-    database.printers.create_index("cups_name", unique=True)
-    database.webhook_events.create_index("event_id", unique=True)
-    database.serial_counters.create_index("date_key", unique=True)
-    database.print_jobs.create_index([("status", ASCENDING), ("queue_sequence", ASCENDING)])
-    database.payments.create_index("razorpay_payment_link_id")
-    database.payments.create_index("razorpay_payment_id")
+    """Create collections, validators and indexes (see app/db_schema.py)."""
+    from app.db_schema import ensure_schema
+    ensure_schema()
 
 
 SessionLocal = MongoSession

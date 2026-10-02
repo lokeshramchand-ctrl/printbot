@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 from app.config import settings, validate_settings
 from app.main import app
-from app.models.customer import Customer
 from app.models.order import Order
 from app.services import payment_service
 from app.services.razorpay_service import razorpay_service

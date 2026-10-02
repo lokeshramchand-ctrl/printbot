@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from app.models.pricing import PricingRule
 import logging
 

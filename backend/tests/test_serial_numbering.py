@@ -1,11 +1,8 @@
-import os
+import zlib
 import threading
 import fitz
-import pytest
-from PIL import Image
 
 from app.database import MongoSession
-from app.services.pricing_service import pricing_service
 from app.services.print_service import print_service
 from app.services.serial_service import (
     get_or_create_order_serial,
@@ -15,13 +12,12 @@ from app.services.serial_service import (
 from app.services.pdf_stamp_service import stamp_printable_pdf
 from app.models.customer import Customer
 from app.models.order import Order
-from app.models.print_job import PrintJob
 
 
 
 def _make_order(db, order_id: str, pdf_path: str, customer_id: int = None) -> Order:
     if customer_id is None:
-        customer = Customer(whatsapp_number="+919876500000", display_name="Serial Test User")
+        customer = Customer(whatsapp_number=f"+91{zlib.crc32(order_id.encode()) % 10**10:010d}", display_name="Serial Test User")
         db.add(customer)
         db.commit()
         customer_id = customer.id

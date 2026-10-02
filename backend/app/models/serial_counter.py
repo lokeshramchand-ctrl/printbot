@@ -18,6 +18,6 @@ class SerialCounter(Base):
     __tablename__ = "serial_counters"
 
     id = Column(Integer, primary_key=True, index=True)
-    date_key = Column(String(8), unique=True, nullable=False, index=True)  # YYYYMMDD (UTC)
+    date_key = Column(String(16), unique=True, nullable=False, index=True)  # YYYYMMDD (UTC) or "QUEUE_SEQ"
     last_value = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

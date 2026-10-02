@@ -34,7 +34,9 @@ full write-up of alternatives considered):
 """
 from datetime import datetime, timezone
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 from app.config import settings
+from app.database import next_id
 from app.models.order import Order
 
 
@@ -52,16 +54,30 @@ def _atomic_increment(db, counter_key: str) -> int:
     individual UPDATE being correctly atomic. RETURNING closes that gap
     by handing back exactly the row this statement produced, atomically.
     """
-    result = db.database.serial_counters.find_one_and_update(
-      {"date_key": counter_key},
-      {
-        "$inc": {"last_value": 1},
-        "$set": {"updated_at": datetime.now(timezone.utc)},
-        "$setOnInsert": {"date_key": counter_key},
-      },
-      upsert=True,
-      return_document=ReturnDocument.AFTER,
+    coll = db.database.serial_counters
+    update = {
+      "$inc": {"last_value": 1},
+      "$set": {"updated_at": datetime.now(timezone.utc)},
+    }
+    result = coll.find_one_and_update(
+      {"date_key": counter_key}, update, return_document=ReturnDocument.AFTER
     )
+    if not result:
+      # First use of this key. The schema requires an integer ``id``, which an
+      # upsert can't supply without burning an id on every call, so create the
+      # row explicitly; the unique index on date_key arbitrates a creation race.
+      try:
+        coll.insert_one({
+          "id": next_id(db.database, "serial_counters"),
+          "date_key": counter_key,
+          "last_value": 0,
+          "updated_at": datetime.now(timezone.utc),
+        })
+      except DuplicateKeyError:
+        pass
+      result = coll.find_one_and_update(
+        {"date_key": counter_key}, update, return_document=ReturnDocument.AFTER
+      )
     if not result:
       raise RuntimeError(f"Unable to allocate serial counter for key={counter_key!r}")
     return result["last_value"]

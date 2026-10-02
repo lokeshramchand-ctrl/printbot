@@ -1,6 +1,5 @@
 from app.database import MongoSession
 from app.models.customer import Customer
-from app.models.order import Order
 
 
 def test_ids_never_collide_after_delete(setup_db):

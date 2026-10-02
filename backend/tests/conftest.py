@@ -6,7 +6,13 @@ no network or second database engine is involved.
 """
 import os
 
-os.environ["MONGODB_URI"] = "mongomock://tests"
+# Default: in-memory. The docker-compose `tests` service sets TEST_MONGODB_URI to the real
+# local MongoDB so validators/indexes/TTL are exercised too. The database name is forced to
+# *_test and the suite refuses anything that looks like Atlas, so tests can never touch real data.
+_uri = os.environ.get("TEST_MONGODB_URI", "mongomock://tests")
+if "mongodb.net" in _uri:
+    raise RuntimeError("Refusing to run tests against Atlas.")
+os.environ["MONGODB_URI"] = _uri
 os.environ["MONGODB_DATABASE"] = "printbot_test"
 os.environ["PAYMENT_MODE"] = "demo"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""

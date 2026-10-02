@@ -1,13 +1,10 @@
 import os
 import fitz
-import pytest
 from PIL import Image
-from app.database import MongoSession
 from app.services.document_service import document_service
 from app.services.pricing_service import pricing_service
 from app.services.razorpay_service import razorpay_service
 from app.services.print_service import print_service
-from app.models.pricing import PricingRule
 from app.models.customer import Customer
 from app.models.order import Order
 

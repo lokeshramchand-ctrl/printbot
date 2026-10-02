@@ -88,8 +88,5 @@ class TelegramPoller:
                     logger.error(f"Telegram polling exception: {e}")
                     await asyncio.sleep(5)
 
-    def stop_polling(self):
-        self.is_running = False
-
 
 telegram_poller = TelegramPoller()

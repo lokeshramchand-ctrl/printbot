@@ -5,7 +5,7 @@ completely untouched at Order.stored_file_path.
 
 Why PyMuPDF (fitz) here: document_service already uses it to build the
 printable.pdf and to count pages, so there's no new dependency, and
-insert_textbox() draws directly into the existing page content stream
+insert_text() draws directly into the existing page content stream
 without resizing, rescaling, or re-flowing anything already on the page —
 it just adds a thin strip of text inside the page's own margin.
 
@@ -58,27 +58,17 @@ def stamp_printable_pdf(pdf_path: str, serial: str, customer_label: str, when: d
             rect = page.rect
             text = build_stamp_text(serial, when, customer_label, i, total_pages)
 
-            # A thin textbox spanning the page width, anchored just above
-            # the bottom edge. insert_textbox with align=CENTER keeps the
-            # stamp centered regardless of paper size (A4/A3/Letter), and
-            # because it's inside the page's own coordinate space it is
-            # printed like any other content — no separate overlay step
-            # that could be dropped or misaligned by a printer driver.
-            box_height = STAMP_FONT_SIZE + 4
-            box = fitz.Rect(
-                rect.x0 + 10,
-                rect.y1 - STAMP_MARGIN_FROM_BOTTOM - box_height,
-                rect.x1 - 10,
-                rect.y1 - STAMP_MARGIN_FROM_BOTTOM,
-            )
-            page.insert_textbox(
-                box,
-                text,
-                fontsize=STAMP_FONT_SIZE,
-                fontname="helv",
-                color=STAMP_COLOR,
-                align=fitz.TEXT_ALIGN_CENTER,
-            )
+            # Draw at an explicit baseline, centered by measured width. (insert_textbox
+            # silently draws nothing when its box is a hair too small for the page's
+            # font metrics, which real-world PDFs trigger; insert_text always draws.)
+            size = STAMP_FONT_SIZE
+            width = fitz.get_text_length(text, fontname="helv", fontsize=size)
+            max_width = rect.width - 20
+            if width > max_width:
+                size = size * max_width / width
+                width = max_width
+            origin = fitz.Point(rect.x0 + (rect.width - width) / 2, rect.y1 - STAMP_MARGIN_FROM_BOTTOM)
+            page.insert_text(origin, text, fontsize=size, fontname="helv", color=STAMP_COLOR)
 
         # PyMuPDF refuses doc.save() back to the same path it was opened
         # from unless the save is incremental, and incremental saves have

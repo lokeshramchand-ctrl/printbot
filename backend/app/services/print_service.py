@@ -1,9 +1,7 @@
 import os
-import time
-import subprocess
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.printer import Printer
@@ -28,8 +26,6 @@ class PrintService:
     @classmethod
     def sync_printers(cls, db: Session) -> List[Printer]:
         """Discover and sync physical CUPS printers into database."""
-        printers_in_db = db.query(Printer).all()
-        
         if HAS_PYCUPS and not settings.USE_VIRTUAL_PRINTER:
             try:
                 conn = cups.Connection(host=settings.CUPS_HOST, port=settings.CUPS_PORT)

@@ -1,45 +1,111 @@
-version: '3.8'
+# One command starts everything and runs the tests:
+#
+#     docker compose up --build
+#
+# Services: mongo (local DB) -> backend (API + Telegram polling) -> frontend (dashboard)
+#           tests (runs once after the backend is healthy; the others keep running)
+#
+# For CI / "stop when the tests finish and fail the build if they fail":
+#     docker compose up --build --abort-on-container-exit --exit-code-from tests
+#
+# Config: every value has a safe local default. Put overrides (TELEGRAM_BOT_TOKEN, ...) in a
+# root-level .env file. MONGODB_URI is deliberately NOT read from .env, so this stack can never
+# be pointed at Atlas by accident.
+
+name: printbot
 
 services:
+  mongo:
+    image: mongo:7
+    container_name: printbot_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-root-dev-password}
+      MONGO_APP_USER: ${MONGO_APP_USER:-printbot}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:-printbot-dev-password}
+      MONGO_APP_DB: printbot
+    command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"]
+    volumes:
+      - mongo_data:/data/db
+      - ./docker/mongo-init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:27017:27017"   # localhost only, for Compass/mongosh; remove to keep it internal
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      target: runtime
     container_name: printbot_backend
-    restart: always
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
     environment:
-      - MONGODB_URI=${MONGODB_URI}
-      - MONGODB_DATABASE=${MONGODB_DATABASE:-printbot}
-      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY in .env}
-      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-}
-      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-}
-      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
-      - ENV=${ENV:-development}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
-      - PAYMENT_MODE=${PAYMENT_MODE:-demo}
-      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
-      - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-admin123}
-      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
-      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-}
-      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-}
-      - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-}
-      - CUPS_HOST=${CUPS_HOST:-host.docker.internal}
-      - USE_VIRTUAL_PRINTER=${USE_VIRTUAL_PRINTER:-true}
+      MONGODB_URI: mongodb://${MONGO_APP_USER:-printbot}:${MONGO_APP_PASSWORD:-printbot-dev-password}@mongo:27017/?authSource=printbot
+      MONGODB_DATABASE: printbot
+      SECRET_KEY: ${SECRET_KEY:-local-dev-secret-key-change-me-0123456789abcdef}
+      ENV: ${ENV:-development}
+      PAYMENT_MODE: ${PAYMENT_MODE:-demo}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:5173,http://127.0.0.1}
+      ADMIN_DEFAULT_USERNAME: ${ADMIN_DEFAULT_USERNAME:-admin}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-admin123}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      CUPS_HOST: ${CUPS_HOST:-host.docker.internal}
+      USE_VIRTUAL_PRINTER: ${USE_VIRTUAL_PRINTER:-true}
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/storage:/app/storage
+      - storage:/app/storage
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
     container_name: printbot_frontend
-    restart: always
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
       - "80:80"
-    depends_on:
-      - backend
 
+  tests:
+    build:
+      context: ./backend
+      target: test
+    container_name: printbot_tests
+    restart: "no"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Real MongoDB (validators, partial/unique/TTL indexes) in a separate *_test database.
+      TEST_MONGODB_URI: mongodb://${MONGO_APP_USER:-printbot}:${MONGO_APP_PASSWORD:-printbot-dev-password}@mongo:27017/?authSource=printbot
+      # Also smoke-test the actual running backend over HTTP.
+      BACKEND_URL: http://backend:8000
+      ADMIN_DEFAULT_USERNAME: ${ADMIN_DEFAULT_USERNAME:-admin}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-admin123}
+      TELEGRAM_BOT_TOKEN: ""
+      TESTDATA_DIR: /testdata
+    volumes:
+      - ./backend/tests:/app/tests:ro
+      - ./testdata:/testdata:ro   # put the document(s) to test with in ./testdata
+
+volumes:
+  mongo_data:
+  storage:

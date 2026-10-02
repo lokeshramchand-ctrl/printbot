@@ -59,4 +59,3 @@ class Order(Base):
     payments = relationship("Payment", back_populates="order")
     print_jobs = relationship("PrintJob", back_populates="order")
     history = relationship("OrderStatusHistory", back_populates="order", cascade="all, delete-orphan")
-    uploaded_files = relationship("UploadedFile", back_populates="order", cascade="all, delete-orphan")

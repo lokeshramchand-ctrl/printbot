@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 import os
@@ -79,5 +79,4 @@ def send_test_print(
     doc.save(test_pdf_path)
     doc.close()
 
-    logger_msg = f"[TEST PRINT] Test page generated for printer {printer.name} at {test_pdf_path}"
     return {"status": "success", "message": f"Test print page sent to {printer.name}", "pdf_path": test_pdf_path}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -7,7 +7,6 @@ from app.database import get_db
 from app.models.admin import Admin
 from app.models.order import Order
 from app.models.history import OrderStatusHistory
-from app.models.printer import Printer
 from app.schemas.order import OrderOut, OrderDetailOut, OrderActionRequest
 from app.api.auth import get_current_admin
 from app.services.print_service import print_service

@@ -9,10 +9,15 @@ in a print queue managed from a **React admin dashboard**.
   razorpay SDK, python-jose + passlib/bcrypt (admin JWT), websockets.
 - **DB** — MongoDB (Atlas, `MONGODB_URI`) via a **custom SQLAlchemy-to-Mongo shim** (see below).
 - **Frontend** `frontend/` — React 18 + Vite + TypeScript + Tailwind (black/gold theme), axios.
-- **Deploy** — `docker-compose.yml` (backend :8000, frontend nginx :80, a redis service nobody uses).
+- **Deploy** — `docker-compose.yml`: local **MongoDB 7 (auth on, least-privilege app user)**, backend :8000, frontend nginx :80, and a one-shot `tests` service.
 
 ## Run
 ```bash
+# everything + tests, one command (needs only Docker; put documents to test with in ./testdata)
+docker compose up --build
+# CI variant: stop when tests finish and propagate their exit code
+docker compose up --build --abort-on-container-exit --exit-code-from tests
+
 # backend (no venv is committed; create one)
 cd backend && python -m venv venv && venv\Scripts\activate
 pip install -r requirements.txt
@@ -69,7 +74,11 @@ link + signed webhook. Both end in `payment_service.confirm_payment` (atomic PEN
 Production (`ENV=production`) refuses to boot in demo mode (`config.validate_settings`). Customer messaging always goes
 through `services/messenger.py` (channel-aware). Telegram is the primary channel.
 
+## Database schema
+`app/db_schema.py` is the single source: collection `$jsonSchema` validators are *derived from the SQLAlchemy models* (types, nullability, max length) plus enums/minimums in `ENUMS`/`MINIMUMS`; unique **partial** indexes (not sparse: sparse still indexes explicit nulls) for print serial, customer channel ids, Razorpay payment id; TTL on `webhook_events` (90 d). `ensure_schema()` runs at startup, is idempotent, and replaces legacy index definitions. Adding a status value in code means adding it to `ENUMS`, or real Mongo rejects the write. mongomock ignores validators/partial filters, so those checks run only under compose (`TEST_MONGODB_URI`).
+
 ## Testing
+- `docker compose up --build` runs the whole suite against **real Mongo** (`printbot_test` db) plus HTTP smoke tests on the live backend and the end-to-end file test over every file in `./testdata`.
 - `cd backend && python -m pytest tests` — runs on in-memory Mongo (`MONGODB_URI=mongomock://…`, set in `tests/conftest.py`).
   Covers bot flows (fake Telegram), demo + Razorpay payment, admin API, WS auth, retention, serial numbering.
 - Live Telegram checklist: start backend (polling starts automatically) → /start → send a PDF → buttons → tap

@@ -73,40 +73,6 @@ class WhatsAppService:
         }
         return await self._post_request("messages", payload)
 
-    async def send_list(
-        self, to_phone: str, body_text: str, button_label: str, sections: List[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """Send interactive list message for options menu."""
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_phone,
-            "type": "interactive",
-            "interactive": {
-                "type": "list",
-                "body": {"text": body_text},
-                "action": {
-                    "button": button_label[:20],
-                    "sections": sections
-                }
-            }
-        }
-        return await self._post_request("messages", payload)
-
-    async def send_document_message(self, to_phone: str, document_url: str, filename: str, caption: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Send a document file to customer."""
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": to_phone,
-            "type": "document",
-            "document": {
-                "link": document_url,
-                "filename": filename,
-                "caption": caption or filename
-            }
-        }
-        return await self._post_request("messages", payload)
-
     async def send_payment_message(
         self, to_phone: str, order_summary_text: str, amount_text: str, order_id: str, payment_url: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:

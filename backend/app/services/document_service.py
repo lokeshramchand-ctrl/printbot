@@ -6,7 +6,6 @@ import fitz  # PyMuPDF
 from PIL import Image
 from typing import Dict, Any, Tuple, Optional
 from app.config import settings
-from app.utils.helpers import sanitize_filename
 
 logger = logging.getLogger("document_service")
 
