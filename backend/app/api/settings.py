@@ -27,7 +27,8 @@ def get_system_settings(current_admin: Admin = Depends(get_current_admin)):
         "cups_host": settings.CUPS_HOST,
         "whatsapp_phone_number_id": settings.WHATSAPP_PHONE_NUMBER_ID,
         "telegram_bot_token": settings.TELEGRAM_BOT_TOKEN[:10] + "..." if settings.TELEGRAM_BOT_TOKEN else "Not Configured",
-        "razorpay_key_id": settings.RAZORPAY_KEY_ID,
+        "payment_mode": settings.PAYMENT_MODE,
+        "razorpay_key_id": settings.RAZORPAY_KEY_ID if settings.PAYMENT_MODE == "razorpay" else "",
         "environment": settings.ENV
     }
 

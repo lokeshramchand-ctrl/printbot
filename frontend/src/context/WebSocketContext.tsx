@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useAuth } from './AuthContext';
 
 type EventCallback = (eventData: any) => void;
 
@@ -10,11 +11,15 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { token } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [listeners, setListeners] = useState<Map<string, Set<EventCallback>>>(new Map());
 
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+    // The dashboard feed requires the admin JWT; don't connect while logged out.
+    if (!token) return;
+    const baseUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
+    const wsUrl = `${baseUrl}?token=${encodeURIComponent(token)}`;
     let socket: WebSocket | null = null;
     let reconnectTimeout: any = null;
 
@@ -67,7 +72,7 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       clearTimeout(reconnectTimeout);
       if (socket) socket.close();
     };
-  }, []);
+  }, [token]);
 
   const subscribe = (eventType: string, callback: EventCallback) => {
     setListeners((prev) => {

@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     WHATSAPP_PHONE_NUMBER_ID: str = "100000000000000"
     WHATSAPP_VERIFY_TOKEN: str = "printbot_verify_token_2026"
     WHATSAPP_API_VERSION: str = "v19.0"
+    # Meta app secret: when set, inbound webhooks must carry a valid X-Hub-Signature-256.
+    WHATSAPP_APP_SECRET: str = ""
 
     # Telegram Bot API (@capstoneprinterbot)
     TELEGRAM_BOT_TOKEN: str = ""
@@ -112,6 +114,8 @@ def validate_settings() -> list[str]:
             problems.append("SECRET_KEY must be a random value of at least 32 characters in production.")
         if settings.ADMIN_DEFAULT_PASSWORD == "admin123":
             problems.append("ADMIN_DEFAULT_PASSWORD must be changed in production.")
+        if not settings.WHATSAPP_APP_SECRET and settings.WHATSAPP_ACCESS_TOKEN not in ("", "EAAG..."):
+            problems.append("WHATSAPP_APP_SECRET must be set when WhatsApp is configured (webhook signature check).")
         if settings.CORS_ORIGINS.strip() == "*":
             problems.append("CORS_ORIGINS must list explicit origins in production.")
     return problems

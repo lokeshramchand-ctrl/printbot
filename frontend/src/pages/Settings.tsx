@@ -10,6 +10,7 @@ export const Settings: React.FC = () => {
   const [useVirtualPrinter, setUseVirtualPrinter] = useState(true);
   const [whatsappPhoneId, setWhatsappPhoneId] = useState('');
   const [razorpayKeyId, setRazorpayKeyId] = useState('');
+  const [paymentMode, setPaymentMode] = useState('demo');
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const fetchSettings = async () => {
@@ -23,6 +24,7 @@ export const Settings: React.FC = () => {
       setUseVirtualPrinter(data.use_virtual_printer ?? true);
       setWhatsappPhoneId(data.whatsapp_phone_number_id || '');
       setRazorpayKeyId(data.razorpay_key_id || '');
+      setPaymentMode(data.payment_mode || 'demo');
     } catch (err) {
       console.error('Error fetching settings:', err);
     }
@@ -120,7 +122,9 @@ export const Settings: React.FC = () => {
 
             <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1">
               <span className="text-zinc-400 block font-semibold">Razorpay Payment Gateway</span>
-              <div className="font-mono text-zinc-200 text-sm">Key ID: {razorpayKeyId}</div>
+              <div className="font-mono text-zinc-200 text-sm">
+                {paymentMode === 'demo' ? 'Demo mode: customers pay with an in-bot button (no real payments)' : `Live mode - Key ID: ${razorpayKeyId}`}
+              </div>
               <span className="inline-block mt-2 px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
                 🟢 Webhook Active
               </span>
