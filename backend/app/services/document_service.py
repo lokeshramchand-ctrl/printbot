@@ -94,6 +94,18 @@ class DocumentService:
             return {"success": False, "error": f"Failed to process document: {str(e)}"}
 
     @staticmethod
+    def extract_pages(source_pdf: str, dest_pdf: str, pages_1_based: list) -> int:
+        """Write a new PDF containing only the given pages (in ascending order). Returns the page count."""
+        doc = fitz.open(source_pdf)
+        try:
+            doc.select([p - 1 for p in pages_1_based])
+            os.makedirs(os.path.dirname(dest_pdf), exist_ok=True)
+            doc.save(dest_pdf)
+            return len(doc)
+        finally:
+            doc.close()
+
+    @staticmethod
     def _convert_image_to_pdf(image_path: str, pdf_output_path: str):
         """Converts JPG/PNG image to standard printable A4 PDF using Pillow."""
         img = Image.open(image_path)

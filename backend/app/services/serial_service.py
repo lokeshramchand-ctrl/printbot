@@ -94,3 +94,8 @@ def get_or_create_order_serial(db, order: Order) -> str:
     db.commit()
     db.refresh(order)
     return order.print_serial
+
+
+def allocate_order_id(db) -> str:
+    """Allocates the next collision-free order id (``PRN-000123``) from an atomic counter."""
+    return f"PRN-{_atomic_increment(db, 'ORDER_ID'):06d}"
