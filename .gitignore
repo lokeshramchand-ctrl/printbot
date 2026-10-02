@@ -1,0 +1,36 @@
+# Environment variables
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+ENV/
+*.db
+*.sqlite3
+
+# Node.js
+node_modules/
+dist/
+build/
+.output/
+.vite/
+
+# Storage & Uploads
+backend/storage/uploads/*
+backend/storage/processed/*
+backend/storage/previews/*
+!backend/storage/uploads/.gitkeep
+!backend/storage/processed/.gitkeep
+!backend/storage/previews/.gitkeep
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
