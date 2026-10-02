@@ -33,7 +33,7 @@ Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Sett
   `razorpay_webhook`.
 - `services/bot_state_machine.py` — **the core**. One router (`_process_state_transition`) shared by
   both channels. Customer states: `IDLE → WAITING_FOR_FILE → ASK_COPIES → ASK_COLOR →
-  ASK_PAPER_SIZE → ASK_PAGES → ASK_SIDES → WAITING_FOR_PAYMENT`. Per-customer scratch data is in
+  ASK_PAPER_SIZE → ASK_PAGES → (ASK_PAGE_RANGE) → ASK_SIDES → WAITING_FOR_PAYMENT`. Per-customer scratch data is in
   `Customer.state_data` (must call `flag_modified` after mutating). Global commands: CANCEL/STOP,
   RESTART/RESET//START, STATUS, HELP. Buttons are matched by substring on `callback_data`/title.
 - `services/telegram_polling.py` — getUpdates loop (offset in memory only). `telegram_service.py` /
@@ -41,8 +41,7 @@ Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Sett
   `send_payment_message`, file download).
 - `document_service.py` — converts PDF/DOC/DOCX/JPG/PNG to a printable PDF, counts pages.
 - `pricing_service.py` — `PricingRule` rows; `calculate_price(db, paper, color, sides, pages, copies)`.
-- `razorpay_service.py` — payment links; returns `success: False` (no fake URL) when keys are the
-  `rzp_test_key_id` placeholder. Webhook marks order PAID and calls `print_service.submit_job`.
+- `razorpay_service.py` / `payment_service.py` — payment links, signed webhook, shared `confirm_payment` (see Payments).
 - `print_service.py` — printer sync, `submit_job` (serial + stamp + queue sequence),
   `execute_print_job` (CUPS via pycups, or simulated when `USE_VIRTUAL_PRINTER=True`).
 - `serial_service.py` / `pdf_stamp_service.py` — order serial `PB-YYYYMMDD-NNNNNN`, stamped once on the
@@ -55,48 +54,32 @@ Status changes are logged in `OrderStatusHistory`. Order ids come from `utils.he
 (`PRN-…`).
 
 ## The Mongo shim (read before touching DB code)
-`app/database.py` keeps SQLAlchemy models (`Base`, `Column`, `relationship`) but `SessionLocal` is
-`MongoSession`, which emulates `query/filter/order_by/first/all/count/scalar/add/commit/refresh`
-by **loading whole collections into memory and filtering in Python**. Consequences:
-- Only simple filters are supported (`==, !=, <, >, in_, ilike, and_/or_`); `join` is a no-op.
-  Anything fancier silently returns wrong results — add support or use `db.database.<coll>` directly.
-- `commit()` re-saves *every tracked object*; ids for int PKs are `count_documents + 1` (race-prone,
-  can collide after deletes).
+`app/database.py` keeps SQLAlchemy models (`Base`, `Column`, `relationship`) but `SessionLocal` is `MongoSession`:
+- One process-wide `MongoClient` (`get_client()`); `mongomock://` URIs give an in-memory DB for tests.
+- Per-session identity map; `commit()` writes only changed fields (`$set`) of objects that changed since load.
+- Integer ids come from an atomic counter (`next_id`); order ids from `serial_service.allocate_order_id`.
+- `==` / `in_` filters on own columns are pushed to Mongo; other filters (`ilike`, `and_/or_`, relationship columns)
+  are evaluated in Python over the loaded collection. `join` is a no-op. Anything fancier: use `db.database.<coll>`.
 - Relationships are hydrated by a hardcoded map in `_hydrate_relationships`.
-- Performance is O(collection) per query — fine for a campus shop, not for scale.
-- Atomic counters use `find_one_and_update` (`serial_service.py`), not the shim.
-- `get_db()` opens a new `MongoClient` per request/poll cycle.
+- Atomic state flips (PENDING→PAID, cancel) use `find_one_and_update` on `db.database.orders` directly.
 
-## Testing — current status (verified 2026-10-02)
-- `pytest tests` → **14 passed** (`test_all.py`, `test_serial_numbering.py`) in a fresh venv.
-- **Caveat:** the tests build a SQLite DB (`sqlite:///./test_printbot.db`) and bypass `MongoSession`,
-  so the Mongo shim, bot state machine, webhooks and API routes have **no automated coverage**.
-- README mentions `backend/scratch/test_e2e_simulation.py` and `test_telegram_simulation.py`;
-  **`backend/scratch/` does not exist**. Stray DBs (`printbot.db`, `sim_*.db`) are leftovers of that.
-- Live-test checklist for the Telegram bot: start backend (polling starts automatically) → /start →
-  send a PDF → click through copies/color/paper/pages/sides → expect order summary + pay button →
-  verify order in dashboard. Payment step needs real Razorpay test keys (`rzp_test_…`, not the
-  placeholder) and a public URL for the webhook (ngrok/cloudflared).
+## Payments
+`PAYMENT_MODE=demo` (default) → order summary has a `DEMO_PAY_<order_id>` callback button; `razorpay` → real payment
+link + signed webhook. Both end in `payment_service.confirm_payment` (atomic PENDING→PAID claim, then queue/print/notify).
+Production (`ENV=production`) refuses to boot in demo mode (`config.validate_settings`). Customer messaging always goes
+through `services/messenger.py` (channel-aware). Telegram is the primary channel.
 
-## Known gaps / bugs (found in analysis)
-1. **"Specific pages" is a no-op**: `PAGES_SPECIFIC` is accepted but `pages_to_print` is always `"all"`
-   (`bot_state_machine.py` `_handle_pages_input`, order creation); the printer never receives a range.
-2. Copies are capped to buttons 1/2/3 (+ "5" substring); typing e.g. `12` is parsed as `1`.
-   Substring matching in `_handle_copies_input`/`_handle_sides_input` is fragile (`"2"` anywhere → double).
-3. `WAITING_FOR_PAYMENT` with no Razorpay config leaves the customer stuck (only CANCEL/RESTART help);
-   the order stays `PAYMENT_PENDING`. Cancelling does not cancel the order or Razorpay link.
-4. Razorpay webhook skips signature verification when the test placeholder key is set, or when the
-   signature header is absent (`razorpay_webhook.py`) → forged "paid" events are accepted. Fix before prod.
-5. No Telegram webhook secret check; CORS is `*` with credentials; default admin `admin/admin123` and
-   default `SECRET_KEY` are used unless overridden.
-6. Telegram polling: offset not persisted (re-processes on restart), updates handled serially, no
-   `answerCallbackQuery` (buttons show a spinner), `Markdown` parse mode will fail on filenames with
-   `_`/`*` and the failure is only logged.
-7. No FILE_RETENTION cleanup job despite `FILE_RETENTION_DAYS`; no upload size check for
-   `MAX_FILE_SIZE_MB`; `printbot.db`, uploads and processed PDFs sit in the repo tree.
-8. `docker-compose.yml` ships an unused Redis; `app/services/migration_service.py` is a stub; README
-   still says "SQLAlchemy models" / `printerBot/` layout in places.
-9. `datetime.utcnow()` deprecation warnings (363 in test run).
+## Testing
+- `cd backend && python -m pytest tests` — runs on in-memory Mongo (`MONGODB_URI=mongomock://…`, set in `tests/conftest.py`).
+  Covers bot flows (fake Telegram), demo + Razorpay payment, admin API, WS auth, retention, serial numbering.
+- Live Telegram checklist: start backend (polling starts automatically) → /start → send a PDF → buttons → tap
+  *Pay (Demo)* → expect "Print complete" → check order in dashboard.
+- Never point tests at Atlas; live runs use whatever `MONGODB_*` is in `backend/.env`.
+
+## Known remaining gaps
+- WhatsApp path is implemented but far less exercised than Telegram.
+- Handlers still make synchronous DB calls on the event loop; Mongo shim is O(collection) for non-equality filters.
+- Telegram bot token must be rotated if it was ever pasted into a README/chat (BotFather `/revoke`).
 
 ## Security notes
 - `.env` and `backend/.env` contain **real Atlas credentials and a Telegram bot token**. The root

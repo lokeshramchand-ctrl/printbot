@@ -1,13 +1,6 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: printbot_redis
-    restart: always
-    ports:
-      - "6379:6379"
-
   backend:
     build:
       context: ./backend
@@ -17,13 +10,21 @@ services:
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - MONGODB_DATABASE=${MONGODB_DATABASE:-printbot}
-      - SECRET_KEY=${SECRET_KEY:-printbot_super_secret_jwt_key_change_in_production_2026}
-      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-EAAG...}
-      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-100000000000000}
-      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-printbot_verify_token_2026}
-      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-rzp_test_key_id}
-      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-rzp_test_key_secret}
-      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-rzp_webhook_secret_2026}
+      - SECRET_KEY=${SECRET_KEY:?set SECRET_KEY in .env}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-}
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-}
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
+      - ENV=${ENV:-development}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
+      - PAYMENT_MODE=${PAYMENT_MODE:-demo}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+      - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-admin123}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET:-}
+      - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-}
       - CUPS_HOST=${CUPS_HOST:-host.docker.internal}
       - USE_VIRTUAL_PRINTER=${USE_VIRTUAL_PRINTER:-true}
     ports:

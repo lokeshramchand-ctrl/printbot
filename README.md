@@ -6,7 +6,7 @@
 [![WhatsApp](https://img.shields.io/badge/Messaging-WhatsApp_Cloud_API-25D366?style=for-the-badge&logo=whatsapp)](https://developers.facebook.com/docs/whatsapp/cloud-api)
 [![Razorpay](https://img.shields.io/badge/Payment-Razorpay-0C2340?style=for-the-badge&logo=razorpay)](https://razorpay.com/)
 
-**PrintBot** is a production-ready automated printing platform where **customers interact 100% through WhatsApp or Telegram (`@capstoneprinterbot`)**.
+**PrintBot** is a production-ready automated printing platform where **customers interact 100% through Telegram (`@capstoneprinterbot`) or WhatsApp**.
 
 Customers upload documents, select print options via interactive buttons, and pay online via Razorpay. Print-shop staff manage all incoming jobs, queue status, pricing rules, and analytics from the **Admin Dashboard**.
 
@@ -22,17 +22,27 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-Add your API keys to `.env`:
+Edit `backend/.env` (see `.env.example` for every option). Minimum for Telegram testing:
 
 ```env
+MONGODB_URI=...                 # MongoDB is the only database
+MONGODB_DATABASE=printbot
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_from_botfather
-WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-WHATSAPP_VERIFY_TOKEN=your_verify_token
-RAZORPAY_KEY_ID=your_razorpay_key_id
-RAZORPAY_KEY_SECRET=your_razorpay_key_secret
-RAZORPAY_WEBHOOK_SECRET=your_webhook_secret
+PAYMENT_MODE=demo               # button-based fake payment; see "Payments" below
 ```
+
+## 💳 Payments: demo vs Razorpay
+
+| `PAYMENT_MODE` | What the customer sees | Use for |
+|---|---|---|
+| `demo` (default) | Order summary with **💳 Pay ₹X (Demo)** button. Tapping it runs the *same* pipeline as a real payment (PAID → queue → print → notify). | Development / testing |
+| `razorpay` | A real Razorpay payment link. Payment is confirmed only by the **signed** webhook. | Production |
+
+Going live with Razorpay: set `ENV=production`, `PAYMENT_MODE=razorpay`, real `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET`,
+create a webhook in the Razorpay dashboard to `<PUBLIC_BASE_URL>/webhooks/razorpay` (events `payment_link.paid`,
+`payment_link.expired`, `payment_link.cancelled`, `payment.failed`) and put its secret in `RAZORPAY_WEBHOOK_SECRET`.
+Production refuses to start with demo payments, default `SECRET_KEY`/admin password, or wildcard CORS.
+The webhook always verifies the HMAC signature, checks the paid amount and link against the order, and is idempotent.
 
 ---
 
@@ -72,30 +82,15 @@ docker-compose up --build -d
 
 ## 🧪 Testing Commands
 
-### Backend Unit Tests
+### Backend tests
 ```bash
 cd backend
-python -m pytest tests/ -v
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest tests -v
 ```
-This runs both the original suite (`tests/test_all.py`) and the print-serial
-numbering suite (`tests/test_serial_numbering.py`), which specifically
-covers: uniqueness of the serial and queue-position counters under real
-concurrent threads, idempotency across retries/reprints (no duplicate
-serial, no double-stamped PDF), rejection of double-executing a print
-job, and that PDF stamping never alters the customer's original page
-content, dimensions, or page count.
-
-### WhatsApp Flow Simulation
-```bash
-cd backend
-python scratch/test_e2e_simulation.py
-```
-
-### Telegram Flow Simulation
-```bash
-cd backend
-python scratch/test_telegram_simulation.py
-```
+Tests run against an in-memory MongoDB (`mongomock`) through the same data layer as production, and cover: full Telegram
+conversations (copies, colour, paper, specific pages, sides), the demo payment pipeline, Razorpay payment links and signed
+webhooks (forged/unsigned/underpaid/duplicate), order cancellation, admin API, WebSocket auth, file retention, serial numbering.
 
 ### Frontend Production Build
 ```bash
@@ -236,11 +231,11 @@ copies, multiple files, or several jobs printing back-to-back.
 ## 📁 Project Structure
 
 ```
-printerBot/
+printbot/
 ├── backend/
 │   ├── app/
 │   │   ├── api/             # FastAPI REST & Webhook routes
-│   │   ├── models/          # SQLAlchemy database models
+│   │   ├── models/          # Data models (SQLAlchemy declarative classes persisted to MongoDB)
 │   │   ├── schemas/         # Pydantic validation schemas
 │   │   ├── services/        # Bot state machine, Document engine, Telegram/WhatsApp services
 │   │   └── main.py          # FastAPI app entry point
