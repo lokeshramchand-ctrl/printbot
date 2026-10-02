@@ -51,6 +51,7 @@ Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Sett
   `execute_print_job` (CUPS via pycups, or simulated when `USE_VIRTUAL_PRINTER=True`).
 - `serial_service.py` / `pdf_stamp_service.py` — order serial `PB-YYYYMMDD-NNNNNN`, stamped once on the
   *printable* PDF only (never the original upload). README documents the design in detail.
+- `services/agent_service.py` + `api/agents.py` — **print agents** (PC/phone apps in `agent/`, Flutter). Dashboard creates an agent → one-time pairing code → app gets a bearer token (SHA-256 stored). `POST /api/agent/heartbeat` upserts printers (`Printer.agent_id`, `last_seen_at`; stale > 90 s = unreachable), `POST /api/agent/jobs/claim` atomically flips QUEUED→PRINTING for the agent's printers, `GET …/file`, `POST …/report` (COMPLETED/FAILED). `execute_print_job` never prints on agent printers locally; jobs wait QUEUED for the claim. Claimed jobs of a silent agent (10 min) are re-queued.
 - `websocket_service.py` — broadcasts events to the dashboard.
 
 ## Order lifecycle
