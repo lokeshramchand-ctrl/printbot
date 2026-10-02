@@ -11,7 +11,10 @@ from app.models.printer import Printer
 from app.schemas.order import OrderOut, OrderDetailOut, OrderActionRequest
 from app.api.auth import get_current_admin
 from app.services.print_service import print_service
-from app.services.whatsapp_service import whatsapp_service
+from app.config import settings
+from app.models.payment import Payment
+from app.services import messenger, payment_service
+from app.services.razorpay_service import razorpay_service
 from app.services.websocket_service import manager as websocket_manager
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
@@ -97,60 +100,71 @@ async def execute_order_action(
     notes = req.notes or f"Manual admin action: {action}"
 
     if action in ("PRINT", "RETRY"):
+        if order.payment_status != "PAID":
+            raise HTTPException(status_code=400, detail="Order is not paid; refusing to print it.")
+        if order.current_state in ("CANCELLED", "REFUNDED"):
+            raise HTTPException(status_code=400, detail=f"Order is {order.current_state}; cannot print.")
         # Re-submit to queue and print
         print_job = print_service.submit_job(db, order, target_printer_id=req.printer_id)
         success = print_service.execute_print_job(db, print_job.id)
-        
+
         if success and order.customer:
             pickup_note = f" Show reference *{order.print_serial}* at pickup." if order.print_serial else ""
-            await whatsapp_service.send_text_message(
-                order.customer.whatsapp_number,
+            await messenger.send_message(
+                order.customer,
                 f"✅ *Order #{order.id} update:* Your document has been printed and is ready for pickup!{pickup_note}"
             )
-            
+
         await websocket_manager.broadcast_event("order_updated", {"order_id": order.id, "status": order.current_state})
         return {"status": "success", "new_state": order.current_state, "print_success": success}
 
     elif action == "CANCEL":
-        order.current_state = "CANCELLED"
-        order.print_status = "CANCELLED"
-        history = OrderStatusHistory(
-            order_id=order.id,
-            from_status=order.current_state,
-            to_status="CANCELLED",
-            trigger_source="ADMIN",
-            notes=notes
-        )
-        db.add(history)
-        db.commit()
+        previous = order.current_state
+        if previous in ("COMPLETED", "CANCELLED"):
+            raise HTTPException(status_code=400, detail=f"Order is already {previous}.")
+        if order.payment_status == "PENDING":
+            await payment_service.cancel_order(db, order, source="ADMIN", notes=notes)
+        else:
+            order.current_state = "CANCELLED"
+            order.print_status = "CANCELLED"
+            db.add(OrderStatusHistory(order_id=order.id, from_status=previous, to_status="CANCELLED",
+                                      trigger_source="ADMIN", notes=notes))
+            db.commit()
 
-        if order.customer:
-            await whatsapp_service.send_text_message(
-                order.customer.whatsapp_number,
-                f"❌ Order #{order.id} has been cancelled by the shop admin."
-            )
-            
+        customer = order.customer
+        if customer:
+            if customer.active_order_id == order.id:
+                customer.active_order_id = None
+                customer.bot_state = "IDLE"
+                db.commit()
+            await messenger.send_message(customer, f"❌ Order #{order.id} has been cancelled by the shop admin.")
+
         await websocket_manager.broadcast_event("order_updated", {"order_id": order.id, "status": "CANCELLED"})
         return {"status": "success", "new_state": "CANCELLED"}
 
     elif action == "REFUND":
+        if order.payment_status != "PAID":
+            raise HTTPException(status_code=400, detail="Only paid orders can be refunded.")
+        refund_note = notes
+        captured = db.query(Payment).filter(Payment.order_id == order.id, Payment.status == "CAPTURED").first()
+        if captured and captured.razorpay_payment_id and settings.PAYMENT_MODE == "razorpay":
+            result = await razorpay_service.refund_payment(captured.razorpay_payment_id)
+            if not result.get("success"):
+                raise HTTPException(status_code=502, detail=f"Razorpay refund failed: {result.get('error')}")
+            captured.status = "REFUNDED"
+            refund_note = f"{notes} (Razorpay refund {result.get('refund_id')})"
+        elif captured:
+            captured.status = "REFUNDED"
         order.payment_status = "REFUNDED"
-        history = OrderStatusHistory(
-            order_id=order.id,
-            from_status=order.payment_status,
-            to_status="REFUNDED",
-            trigger_source="ADMIN",
-            notes=notes
-        )
-        db.add(history)
+        db.add(OrderStatusHistory(order_id=order.id, from_status="PAID", to_status="REFUNDED",
+                                  trigger_source="ADMIN", notes=refund_note))
         db.commit()
 
         if order.customer:
-            await whatsapp_service.send_text_message(
-                order.customer.whatsapp_number,
-                f"💸 Payment for Order #{order.id} (₹{order.total_amount:.2f}) has been refunded."
+            await messenger.send_message(
+                order.customer, f"💸 Payment for Order #{order.id} (₹{order.total_amount:.2f}) has been refunded."
             )
-            
+
         await websocket_manager.broadcast_event("order_updated", {"order_id": order.id, "payment_status": "REFUNDED"})
         return {"status": "success", "payment_status": "REFUNDED"}
 

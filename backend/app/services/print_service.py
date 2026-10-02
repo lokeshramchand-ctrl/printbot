@@ -128,6 +128,7 @@ class PrintService:
         db.add(print_job)
 
         # Update order state
+        previous_state = order.current_state
         order.current_state = "QUEUED"
         order.print_status = "QUEUED"
         if printer:
@@ -135,7 +136,7 @@ class PrintService:
 
         history = OrderStatusHistory(
             order_id=order.id,
-            from_status=order.current_state,
+            from_status=previous_state,
             to_status="QUEUED",
             trigger_source="SYSTEM",
             notes=f"Order added to print queue (serial {serial}, position #{queue_sequence}) for printer {printer.name if printer else 'Default'}"
