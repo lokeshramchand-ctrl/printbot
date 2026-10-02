@@ -9,6 +9,9 @@ in a print queue managed from a **React admin dashboard**.
   razorpay SDK, python-jose + passlib/bcrypt (admin JWT), websockets.
 - **DB** — MongoDB (Atlas, `MONGODB_URI`) via a **custom SQLAlchemy-to-Mongo shim** (see below).
 - **Frontend** `frontend/` — React 18 + Vite + TypeScript + Tailwind (black/gold theme), axios.
+- **Print agents** — `agent/` (Flutter: Windows + Android) and `agent-windows/` (Python tray app, PyInstaller
+  single exe `dist/PrintBotAgent.exe`, tkinter + pystray, PyMuPDF render + pywin32 GDI silent printing).
+  Both speak the same `/api/agent/*` protocol.
 - **Deploy** — `docker-compose.yml`: local **MongoDB 7 (auth on, least-privilege app user)**, backend :8000, frontend nginx :80, and a one-shot `tests` service.
 
 ## Run
@@ -26,6 +29,11 @@ python -m uvicorn app.main:app --reload --port 8000     # docs: /docs
 cd frontend && npm install && npm run dev                # http://localhost:5173, admin / admin123
 # tests
 cd backend && python -m pytest tests -v
+# Windows agent
+cd agent-windows && pip install -r requirements-dev.txt
+python -m pytest tests -q            # 8 unit tests (pairing, claim, print+report, failure, revoked token, report retry)
+python -m printbot_agent             # run from source
+./build.ps1                          # -> dist\PrintBotAgent.exe (~40 MB, unsigned, no console)
 ```
 Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Settings live in
 `backend/app/config.py` (pydantic-settings; unknown vars ignored).
@@ -53,6 +61,13 @@ Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Sett
   *printable* PDF only (never the original upload). README documents the design in detail.
 - `services/agent_service.py` + `api/agents.py` — **print agents** (PC/phone apps in `agent/`, Flutter). Dashboard creates an agent → one-time pairing code → app gets a bearer token (SHA-256 stored). `POST /api/agent/heartbeat` upserts printers (`Printer.agent_id`, `last_seen_at`; stale > 90 s = unreachable), `POST /api/agent/jobs/claim` atomically flips QUEUED→PRINTING for the agent's printers, `GET …/file`, `POST …/report` (COMPLETED/FAILED). `execute_print_job` never prints on agent printers locally; jobs wait QUEUED for the claim. Claimed jobs of a silent agent (10 min) are re-queued.
 - `websocket_service.py` — broadcasts events to the dashboard.
+
+### Windows agent (`agent-windows/printbot_agent`)
+`api.py` (pair/heartbeat/claim/file/report client), `runner.py` (poll loop: claim → download → print → report; retries
+the report after network drops), `printers.py` (enumerate printers, render PDF pages with PyMuPDF, GDI print via pywin32;
+paper/duplex/colour set per job in DEVMODE, copies sent as repeated documents), `gui.py` (tkinter pairing/status window,
+tray icon; closing hides to tray, tray Quit stops; "Start with Windows" = `HKCU\...\Run`), `config.py`
+(`%APPDATA%\PrintBotAgent\config.json` holds server URL + token). A second launch exits (single instance).
 
 ## Order lifecycle
 `PAYMENT_PENDING → (Razorpay webhook) PAID → QUEUED → PRINTING → COMPLETED | PRINT_FAILED`.
@@ -87,6 +102,8 @@ through `services/messenger.py` (channel-aware). Telegram is the primary channel
 - Never point tests at Atlas; live runs use whatever `MONGODB_*` is in `backend/.env`.
 
 ## Known remaining gaps
+- Windows agent has **not printed a real page** nor been paired against a live backend; the exe is unsigned
+  (SmartScreen/antivirus may warn). Tested: unit tests, printer enumeration, DEVMODE settings accepted (no job submitted).
 - WhatsApp path is implemented but far less exercised than Telegram.
 - Handlers still make synchronous DB calls on the event loop; Mongo shim is O(collection) for non-equality filters.
 - Telegram bot token must be rotated if it was ever pasted into a README/chat (BotFather `/revoke`).
