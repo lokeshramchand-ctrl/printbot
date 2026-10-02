@@ -14,6 +14,7 @@ import {
   Wifi,
   WifiOff,
   Zap,
+  Cpu,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -29,6 +30,7 @@ export const Layout: React.FC = () => {
     { to: '/orders', label: 'Orders', icon: FileText },
     { to: '/queue', label: 'Print Queue', icon: ListOrdered },
     { to: '/printers', label: 'Printers', icon: Printer },
+    { to: '/agents', label: 'Print Agents', icon: Cpu },
     { to: '/pricing', label: 'Pricing Rules', icon: DollarSign },
     { to: '/customers', label: 'Customers', icon: Users },
     { to: '/settings', label: 'Settings', icon: Settings },

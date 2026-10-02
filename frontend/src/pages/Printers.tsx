@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import type { Printer } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
+import { useWebSocket } from '../context/WebSocketContext';
 import { Printer as PrinterIcon, RefreshCw, FileText, CheckCircle2, Plus, X, Power } from 'lucide-react';
 
 const emptyForm = {
@@ -16,6 +17,7 @@ const emptyForm = {
 };
 
 export const Printers: React.FC = () => {
+  const { subscribe } = useWebSocket();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
@@ -38,6 +40,9 @@ export const Printers: React.FC = () => {
 
   useEffect(() => {
     fetchPrinters();
+    // Agents (re)report printers and finish jobs in the background; keep the cards live.
+    return subscribe('printers_updated', () => fetchPrinters());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTestPrint = async (printerId: number) => {
@@ -151,7 +156,9 @@ export const Printers: React.FC = () => {
               </div>
 
               <h2 className="text-lg font-bold text-white">{printer.name}</h2>
-              <p className="text-xs text-zinc-400 font-mono mt-0.5">CUPS: {printer.cups_name}</p>
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
+                {printer.agent_id ? `Agent #${printer.agent_id}` : `CUPS: ${printer.cups_name}`}
+              </p>
 
               <div className="mt-4 space-y-1.5 text-xs text-zinc-300">
                 <div className="flex justify-between">
