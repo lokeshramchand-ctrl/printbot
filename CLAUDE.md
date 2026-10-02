@@ -33,7 +33,8 @@ cd backend && python -m pytest tests -v
 cd agent-windows && pip install -r requirements-dev.txt
 python -m pytest tests -q            # 8 unit tests (pairing, claim, print+report, failure, revoked token, report retry)
 python -m printbot_agent             # run from source
-./build.ps1                          # -> dist\PrintBotAgent.exe (~40 MB, unsigned, no console)
+./build.ps1                          # -> dist\PrintBotAgent.exe (~40 MB, signed by sign.ps1, no console)
+python e2e_live.py "<printer>" out.pdf  # live backend + pair + real GDI print
 ```
 Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Settings live in
 `backend/app/config.py` (pydantic-settings; unknown vars ignored).
@@ -102,8 +103,10 @@ through `services/messenger.py` (channel-aware). Telegram is the primary channel
 - Never point tests at Atlas; live runs use whatever `MONGODB_*` is in `backend/.env`.
 
 ## Known remaining gaps
-- Windows agent has **not printed a real page** nor been paired against a live backend; the exe is unsigned
-  (SmartScreen/antivirus may warn). Tested: unit tests, printer enumeration, DEVMODE settings accepted (no job submitted).
+- Windows agent: pairing + heartbeat + claim/print/report verified live (`e2e_live.py`, real spooler job to a
+  file-port "Microsoft Print To PDF" printer). Not tried on a physical paper printer. `sign.ps1` signs with a real
+  cert via `PRINTBOT_SIGN_PFX`/`PRINTBOT_SIGN_PASSWORD`, else a self-signed dev cert, which still triggers
+  SmartScreen; a CA-issued cert is needed to clear it.
 - WhatsApp path is implemented but far less exercised than Telegram.
 - Handlers still make synchronous DB calls on the event loop; Mongo shim is O(collection) for non-equality filters.
 - Telegram bot token must be rotated if it was ever pasted into a README/chat (BotFather `/revoke`).

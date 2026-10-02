@@ -26,5 +26,24 @@ python -m printbot_agent            # run from source
 ./build.ps1                         # -> dist\PrintBotAgent.exe (~40 MB)
 ```
 
+## Verifying real printing
+`python e2e_live.py "<printer>" <output.pdf>` starts a real HTTP backend (in-memory Mongo), pairs the agent
+through the pairing endpoint, queues a paid 2-page order, and lets the real runner claim, download, print via
+GDI and report. It then checks the spooled file and that the order is `COMPLETED`.
+Needs the backend requirements plus `mongomock`. For a silent no-paper target, create a printer that uses the
+"Microsoft Print To PDF" driver on a *file-path port*:
+```powershell
+Add-PrinterPort -Name 'C:\out\printed.pdf'
+Add-Printer -Name 'PrintBot E2E PDF' -DriverName 'Microsoft Print To PDF' -PortName 'C:\out\printed.pdf'
+```
+Passed on 2026-10-02: 2 A4 pages spooled, serial stamp present, order completed.
+
+## Signing
+`build.ps1` runs `sign.ps1` after the build. With `PRINTBOT_SIGN_PFX` / `PRINTBOT_SIGN_PASSWORD` set it signs with
+your real code-signing certificate (timestamped). Without them it uses a self-signed "PrintBot Dev" cert
+(`dev-cert.cer` is exported; import it into Trusted Root/Publisher to trust it on a test PC).
+
 ## Not verified
-Real paper output on a physical printer, and an unsigned exe may trigger SmartScreen/antivirus warnings.
+- Output on a physical paper printer (only the Windows spooler/driver path was exercised).
+- SmartScreen: a self-signed exe still warns. Removing the warning needs a CA-issued (ideally EV) certificate,
+  which can't be created from code; set the two env vars above when you have one.

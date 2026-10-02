@@ -13,4 +13,5 @@ Run @("python", "-c", "from printbot_agent.gui import make_icon; make_icon(256).
 Run @("python", "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--noconsole",
       "--name", "PrintBotAgent", "--icon", "icon.ico", "--hidden-import", "win32timezone", "run_agent.py")
 
+& "$PSScriptRoot\sign.ps1"
 Write-Host "Built: $PSScriptRoot\dist\PrintBotAgent.exe"

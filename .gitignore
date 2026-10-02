@@ -34,3 +34,5 @@ backend/storage/previews/*
 *.swp
 .DS_Store
 Thumbs.db
+agent-windows/dev-cert.cer
+agent-windows/e2e_out
