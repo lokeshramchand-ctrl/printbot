@@ -1,4 +1,5 @@
 from app.models.admin import Admin
+from app.models.agent import Agent
 from app.models.customer import Customer
 from app.models.order import Order
 from app.models.payment import Payment
@@ -12,6 +13,7 @@ from app.models.serial_counter import SerialCounter
 
 MODEL_BY_TABLE = {
     Admin.__tablename__: Admin,
+    Agent.__tablename__: Agent,
     Customer.__tablename__: Customer,
     Order.__tablename__: Order,
     Payment.__tablename__: Payment,
@@ -26,6 +28,7 @@ MODEL_BY_TABLE = {
 
 __all__ = [
     "Admin",
+    "Agent",
     "Customer",
     "Order",
     "Payment",

@@ -137,6 +137,10 @@ async def confirm_payment(
             customer,
             f"🖨️ *Print complete!*\n\nOrder *#{order.id}* is ready for pickup.{serial}\n\n"
             f"📍 {settings.PICKUP_ADDRESS}\n\nThank you for using {settings.BUSINESS_NAME}! 🙏")
+    elif order.current_state == "QUEUED" and customer and job.printer_id:
+        await messenger.send_message(
+            customer,
+            f"⏳ Order *#{order.id}* is paid and in the print queue. We'll message you when it's printed.")
     elif order.current_state == "QUEUED" and customer:
         await messenger.send_message(
             customer,
@@ -153,6 +157,24 @@ async def confirm_payment(
     return {"status": "paid", "order_state": order.current_state}
 
 
+async def notify_print_result(order: Order, success: bool) -> None:
+    """Tell the customer (and the dashboard) how their print ended."""
+    customer = order.customer
+    if customer and success:
+        serial = f"\n🔖 Reference: *{order.print_serial}*" if order.print_serial else ""
+        await messenger.send_message(
+            customer,
+            f"🖨️ *Print complete!*\n\nOrder *#{order.id}* is ready for pickup.{serial}\n\n"
+            f"📍 {settings.PICKUP_ADDRESS}\n\nThank you for using {settings.BUSINESS_NAME}! 🙏")
+    elif customer:
+        await messenger.send_message(
+            customer,
+            f"⚠️ Order *#{order.id}* is paid but printing hit a problem. "
+            f"The shop has been alerted and will sort it out. Call {settings.BUSINESS_PHONE} if urgent.")
+    await websocket_manager.broadcast_event(
+        "order_updated", {"order_id": order.id, "status": order.current_state})
+
+
 async def drain_print_queue(db) -> int:
     """Print jobs that were waiting for a printer and notify their customers."""
     printed = print_service.dispatch_queue(db)
@@ -161,14 +183,7 @@ async def drain_print_queue(db) -> int:
         if not order:
             continue
         db.refresh(order)
-        if order.customer:
-            serial = f"\n🔖 Reference: *{order.print_serial}*" if order.print_serial else ""
-            await messenger.send_message(
-                order.customer,
-                f"🖨️ *Print complete!*\n\nOrder *#{order.id}* is ready for pickup.{serial}\n\n"
-                f"📍 {settings.PICKUP_ADDRESS}\n\nThank you for using {settings.BUSINESS_NAME}! 🙏")
-        await websocket_manager.broadcast_event(
-            "order_updated", {"order_id": order.id, "status": order.current_state})
+        await notify_print_result(order, True)
     return len(printed)
 
 

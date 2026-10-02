@@ -18,6 +18,10 @@ class Printer(Base):
     is_color_supported = Column(Boolean, default=True)
     supported_paper_sizes = Column(String(100), default="A4,A3,Letter")
     
+    # Set when the printer is reported by a paired print agent (PC/phone app) instead of local CUPS.
+    agent_id = Column(Integer, nullable=True, index=True)
+    last_seen_at = Column(DateTime, nullable=True)
+
     current_job_id = Column(String(50), nullable=True)
     total_printed_jobs = Column(Integer, default=0)
     error_notes = Column(Text, nullable=True)

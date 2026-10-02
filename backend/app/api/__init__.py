@@ -9,6 +9,7 @@ from app.api.analytics import router as analytics_router
 from app.api.customers import router as customers_router
 from app.api.settings import router as settings_router
 from app.api.websocket import router as ws_router
+from app.api.agents import admin_router as agents_admin_router, router as agent_device_router
 
 all_routers = [
     auth_router,
@@ -22,4 +23,6 @@ all_routers = [
     customers_router,
     settings_router,
     ws_router,
+    agents_admin_router,
+    agent_device_router,
 ]

@@ -35,6 +35,8 @@ class PrinterOut(BaseModel):
     is_color_supported: bool
     supported_paper_sizes: str
     current_job_id: Optional[str] = None
+    agent_id: Optional[int] = None
+    last_seen_at: Optional[datetime] = None
     total_printed_jobs: int
     updated_at: datetime
 
