@@ -1,89 +1,120 @@
-import hmac
+"""Razorpay Payment Links integration (production payment path).
+
+Active only when ``PAYMENT_MODE=razorpay``. To go live: put real
+``RAZORPAY_KEY_ID`` / ``RAZORPAY_KEY_SECRET`` in the environment, create a
+webhook in the Razorpay dashboard pointing at ``<PUBLIC_BASE_URL>/webhooks/razorpay``
+(events: ``payment_link.paid``, ``payment_link.expired``, ``payment_link.cancelled``,
+``payment.failed``) and put its secret in ``RAZORPAY_WEBHOOK_SECRET``.
+"""
+import asyncio
 import hashlib
+import hmac
 import logging
+import re
+import time
+from typing import Any, Dict, Optional
+
 import razorpay
-from typing import Dict, Any, Optional
-from app.config import settings
+
+from app.config import razorpay_configured, settings
 
 logger = logging.getLogger("razorpay_service")
 
+PAYMENT_LINK_EXPIRY_MINUTES = 60  # Razorpay requires expire_by to be >= 15 minutes ahead
+
+
+def _valid_phone(value: Optional[str]) -> Optional[str]:
+    """Return a Razorpay-acceptable contact number, or None (e.g. Telegram chat ids are not phones)."""
+    if not value or value.startswith("tg_"):
+        return None
+    digits = re.sub(r"[^\d+]", "", value)
+    return digits if re.fullmatch(r"\+?\d{10,15}", digits) else None
+
+
 class RazorpayService:
-    """Razorpay payment gateway integration service."""
+    """Thin, testable wrapper around the official Razorpay SDK."""
 
     def __init__(self):
-        self.key_id = settings.RAZORPAY_KEY_ID
-        self.key_secret = settings.RAZORPAY_KEY_SECRET
-        self.webhook_secret = settings.RAZORPAY_WEBHOOK_SECRET
-        
-        # Initialize official Razorpay SDK client if keys configured
-        try:
-            self.client = razorpay.Client(auth=(self.key_id, self.key_secret))
-        except Exception as e:
-            logger.warning(f"Razorpay Client initialization warning: {str(e)}")
-            self.client = None
+        self._client: Any = None
 
-    def create_payment_link(self, order_id: str, amount_inr: float, customer_phone: str, description: str) -> Dict[str, Any]:
-        """
-        Creates a Razorpay Payment Link for the order.
-        Returns payment_link_id and payment_url.
-        """
-        amount_paise = int(round(amount_inr * 100))
+    @property
+    def client(self):
+        if self._client is None:
+            # Read credentials lazily so tests/ops can set them after import.
+            self._client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+            self._client.set_app_details({"title": "PrintBot", "version": "2.0"})
+        return self._client
 
-        # Check if production/valid keys exist
-        is_test_placeholder = (self.key_id == "rzp_test_key_id" or not self.key_id)
+    @property
+    def is_configured(self) -> bool:
+        return razorpay_configured()
 
-        if not is_test_placeholder and self.client:
-            try:
-                payload = {
-                    "amount": amount_paise,
-                    "currency": "INR",
-                    "accept_partial": False,
-                    "reference_id": order_id,
-                    "description": description,
-                    "customer": {
-                        "contact": customer_phone,
-                    },
-                    "notify": {
-                        "sms": True,
-                        "whatsapp": True
-                    },
-                    "reminder_enable": True,
-                    "notes": {
-                        "order_id": order_id,
-                        "app": "PrintBot"
-                    }
-                }
-                res = self.client.payment_link.create(payload)
-                return {
-                    "success": True,
-                    "payment_link_id": res.get("id"),
-                    "payment_url": res.get("short_url") or res.get("url"),
-                    "raw_response": res
-                }
-            except Exception as e:
-                logger.error(f"Razorpay Payment Link API error for {order_id}: {str(e)}")
+    async def create_payment_link(
+        self, order_id: str, amount_inr: float, customer_phone: Optional[str], description: str
+    ) -> Dict[str, Any]:
+        """Create a single-use payment link. Never returns a fake URL."""
+        if not self.is_configured:
+            return {"success": False, "error": "Razorpay is not configured with valid API credentials."}
 
-        # Do not send a fake hosted URL: it looks valid to the customer but
-        # returns 404 and leaves the order stuck in PAYMENT_PENDING.
-        return {
-            "success": False,
-            "error": "Razorpay is not configured with valid API credentials."
+        payload: Dict[str, Any] = {
+            "amount": int(round(amount_inr * 100)),
+            "currency": "INR",
+            "accept_partial": False,
+            "reference_id": order_id,
+            "description": description[:2048],
+            "expire_by": int(time.time()) + PAYMENT_LINK_EXPIRY_MINUTES * 60,
+            # We deliver the link ourselves in the chat; avoid double SMS/WhatsApp from Razorpay.
+            "notify": {"sms": False, "email": False},
+            "reminder_enable": False,
+            "notes": {"order_id": order_id, "app": "PrintBot"},
         }
+        phone = _valid_phone(customer_phone)
+        if phone:
+            payload["customer"] = {"contact": phone}
 
-    def verify_webhook_signature(self, body_bytes: bytes, signature: str) -> bool:
-        """Verifies Razorpay webhook HMAC-SHA256 signature."""
-        if not signature or not self.webhook_secret:
-            return False
-            
         try:
-            expected_signature = hmac.new(
-                key=self.webhook_secret.encode("utf-8"),
-                msg=body_bytes,
-                digestmod=hashlib.sha256
-            ).hexdigest()
-            return hmac.compare_digest(expected_signature, signature)
-        except Exception as e:
-            logger.error(f"Error verifying Razorpay webhook signature: {str(e)}")
+            res = await asyncio.to_thread(self.client.payment_link.create, payload)
+        except Exception as e:  # SDK raises BadRequestError / network errors
+            logger.error(f"Razorpay payment link error for {order_id}: {e}")
+            return {"success": False, "error": f"Razorpay error: {e}"}
+
+        url = res.get("short_url") or res.get("url")
+        if not url:
+            return {"success": False, "error": "Razorpay returned no payment URL."}
+        return {"success": True, "payment_link_id": res.get("id"), "payment_url": url, "expire_by": res.get("expire_by")}
+
+    async def cancel_payment_link(self, payment_link_id: str) -> bool:
+        """Cancel an unpaid link so a cancelled order can no longer be paid."""
+        if not self.is_configured or not payment_link_id:
             return False
+        try:
+            await asyncio.to_thread(self.client.payment_link.cancel, payment_link_id)
+            return True
+        except Exception as e:
+            logger.warning(f"Could not cancel Razorpay payment link {payment_link_id}: {e}")
+            return False
+
+    async def refund_payment(self, payment_id: str, amount_inr: Optional[float] = None) -> Dict[str, Any]:
+        """Refund a captured payment (full if amount omitted)."""
+        if not self.is_configured:
+            return {"success": False, "error": "Razorpay is not configured."}
+        data: Dict[str, Any] = {}
+        if amount_inr is not None:
+            data["amount"] = int(round(amount_inr * 100))
+        try:
+            res = await asyncio.to_thread(self.client.payment.refund, payment_id, data)
+            return {"success": True, "refund_id": res.get("id"), "raw_response": res}
+        except Exception as e:
+            logger.error(f"Razorpay refund failed for {payment_id}: {e}")
+            return {"success": False, "error": str(e)}
+
+    def verify_webhook_signature(self, body_bytes: bytes, signature: Optional[str]) -> bool:
+        """Verify the ``X-Razorpay-Signature`` HMAC-SHA256 of the raw request body."""
+        secret = settings.RAZORPAY_WEBHOOK_SECRET
+        if not signature or not secret:
+            return False
+        expected = hmac.new(secret.encode("utf-8"), body_bytes, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, signature)
+
 
 razorpay_service = RazorpayService()
