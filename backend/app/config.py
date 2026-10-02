@@ -28,11 +28,27 @@ class Settings(BaseSettings):
 
     # Telegram Bot API (@capstoneprinterbot)
     TELEGRAM_BOT_TOKEN: str = ""
-    
-    # Razorpay Payment Gateway
+    # Optional shared secret Telegram echoes back in the
+    # X-Telegram-Bot-Api-Secret-Token header when a webhook is registered.
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+
+    # Public HTTPS base URL of this backend (ngrok/cloudflared/prod domain).
+    PUBLIC_BASE_URL: str = ""
+
+    # How customers pay:
+    #   demo     -> order summary shows a "Pay (Demo)" button; tapping it runs
+    #               the exact same post-payment pipeline as a real payment
+    #               (mark PAID -> queue -> print -> notify). No money moves.
+    #   razorpay -> real Razorpay payment link + signed webhook confirmation.
+    PAYMENT_MODE: str = "demo"
+
+    # Razorpay Payment Gateway (used only when PAYMENT_MODE=razorpay)
     RAZORPAY_KEY_ID: str = "rzp_test_key_id"
     RAZORPAY_KEY_SECRET: str = "rzp_test_key_secret"
     RAZORPAY_WEBHOOK_SECRET: str = "rzp_webhook_secret_2026"
+    # Browser origins allowed to call the API (comma separated). "*" only in development.
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
+    MAX_COPIES: int = 100
     
     # Storage & File Retention
     STORAGE_DIR: str = str(BASE_DIR / "storage")
@@ -60,6 +76,45 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+RAZORPAY_PLACEHOLDERS = {"", "rzp_test_key_id", "rzp_test_key_secret", "your_razorpay_key_id", "your_razorpay_key_secret"}
+INSECURE_SECRET_KEYS = {
+    "printbot_super_secret_jwt_key_change_in_production_2026",
+    "change_this_to_a_secure_random_secret_key_in_production",
+    "",
+}
+
+
+def razorpay_configured() -> bool:
+    """True only when real (non-placeholder) key id, key secret and webhook secret are set."""
+    return (
+        settings.RAZORPAY_KEY_ID not in RAZORPAY_PLACEHOLDERS
+        and settings.RAZORPAY_KEY_SECRET not in RAZORPAY_PLACEHOLDERS
+        and settings.RAZORPAY_WEBHOOK_SECRET not in ("", "rzp_webhook_secret_2026", "your_razorpay_webhook_secret")
+    )
+
+
+def validate_settings() -> list[str]:
+    """Return fatal configuration problems for the current ENV/PAYMENT_MODE.
+
+    Called at startup. Production refuses to boot with demo payments,
+    placeholder Razorpay credentials, default admin/JWT secrets or open CORS.
+    """
+    problems: list[str] = []
+    if settings.PAYMENT_MODE not in ("demo", "razorpay"):
+        problems.append("PAYMENT_MODE must be 'demo' or 'razorpay'.")
+    if settings.PAYMENT_MODE == "razorpay" and not razorpay_configured():
+        problems.append("PAYMENT_MODE=razorpay requires real RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET.")
+    if settings.ENV.lower() == "production":
+        if settings.PAYMENT_MODE == "demo":
+            problems.append("ENV=production must not use PAYMENT_MODE=demo (customers would print for free).")
+        if settings.SECRET_KEY in INSECURE_SECRET_KEYS or len(settings.SECRET_KEY) < 32:
+            problems.append("SECRET_KEY must be a random value of at least 32 characters in production.")
+        if settings.ADMIN_DEFAULT_PASSWORD == "admin123":
+            problems.append("ADMIN_DEFAULT_PASSWORD must be changed in production.")
+        if settings.CORS_ORIGINS.strip() == "*":
+            problems.append("CORS_ORIGINS must list explicit origins in production.")
+    return problems
 
 # Ensure storage directories exist
 os.makedirs(os.path.join(settings.STORAGE_DIR, "uploads"), exist_ok=True)
