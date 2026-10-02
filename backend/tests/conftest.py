@@ -15,7 +15,7 @@ os.environ["USE_VIRTUAL_PRINTER"] = "true"
 import pytest
 
 from app import database
-from app.database import MongoSession
+from app.database import MongoSession, initialize_mongodb
 from app.services.pricing_service import pricing_service
 
 
@@ -24,6 +24,7 @@ def setup_db():
     database.reset_client()
     db = MongoSession()
     db.client.drop_database("printbot_test")
+    initialize_mongodb()  # unique indexes (idempotency keys, serials) behave as in production
     pricing_service.seed_defaults_if_empty(db)
     yield db
     db.client.drop_database("printbot_test")

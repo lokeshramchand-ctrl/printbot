@@ -47,9 +47,9 @@ def test_pricing_calculation(setup_db):
     p3 = pricing_service.calculate_price(db, "A4", "BW", "single", total_pages=1, copies=1)
     assert p3["total_amount"] == 5.0
 
-def test_razorpay_payment_link_generation():
+async def test_razorpay_payment_link_generation():
     """Placeholder credentials must not produce a fake checkout URL."""
-    res = razorpay_service.create_payment_link(
+    res = await razorpay_service.create_payment_link(
         order_id="PRN-9999",
         amount_inr=32.0,
         customer_phone="+919876543210",
