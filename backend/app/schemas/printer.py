@@ -10,6 +10,7 @@ class PrinterCreate(BaseModel):
     is_color_supported: bool = True
     supported_paper_sizes: str = "A4,A3,Letter"
     is_default: bool = False
+    is_online: bool = True
 
 class PrinterUpdate(BaseModel):
     name: Optional[str] = None
@@ -20,6 +21,7 @@ class PrinterUpdate(BaseModel):
     is_color_supported: Optional[bool] = None
     supported_paper_sizes: Optional[str] = None
     is_default: Optional[bool] = None
+    cups_name: Optional[str] = None
 
 class PrinterOut(BaseModel):
     id: int

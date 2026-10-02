@@ -2,9 +2,24 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import type { Printer } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
-import { Printer as PrinterIcon, RefreshCw, FileText, CheckCircle2 } from 'lucide-react';
+import { Printer as PrinterIcon, RefreshCw, FileText, CheckCircle2, Plus, X, Power } from 'lucide-react';
+
+const emptyForm = {
+  name: '',
+  cups_name: '',
+  model: 'Generic Printer',
+  location: 'Main Store',
+  supported_paper_sizes: 'A4,A3,Letter',
+  is_color_supported: true,
+  is_default: false,
+  is_online: true,
+};
 
 export const Printers: React.FC = () => {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [loading, setLoading] = useState(true);
   const [testMessage, setTestMessage] = useState<string | null>(null);
@@ -35,6 +50,33 @@ export const Printers: React.FC = () => {
     }
   };
 
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      await api.post('/api/printers', form);
+      setForm(emptyForm);
+      setShowForm(false);
+      await fetchPrinters();
+    } catch (err: any) {
+      setFormError(err?.response?.data?.detail || 'Could not add printer');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const togglePower = async (printer: Printer) => {
+    try {
+      await api.put(`/api/printers/${printer.id}`, { is_online: !printer.is_online });
+      await fetchPrinters();
+    } catch (err) {
+      console.error('Toggle failed:', err);
+    }
+  };
+
+  const inputCls = 'w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-white focus:outline-none focus:border-gold-400';
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -43,13 +85,52 @@ export const Printers: React.FC = () => {
           <h1 className="text-2xl font-bold text-white tracking-tight">Printer Hardware</h1>
           <p className="text-sm text-zinc-400">Configure CUPS network printers and virtual hardware drivers.</p>
         </div>
-        <button
-          onClick={fetchPrinters}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs font-semibold text-zinc-300 transition"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Status
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gold-500 hover:bg-gold-400 rounded-xl text-xs font-bold text-black transition"
+          >
+            {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />} {showForm ? 'Close' : 'Add Printer'}
+          </button>
+          <button
+            onClick={fetchPrinters}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs font-semibold text-zinc-300 transition"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Status
+          </button>
+        </div>
       </div>
+
+      {showForm && (
+        <form onSubmit={handleAdd} className="glass-panel p-6 rounded-2xl border border-zinc-800 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="text-xs text-zinc-400 space-y-1">Name *
+            <input required className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </label>
+          <label className="text-xs text-zinc-400 space-y-1">CUPS Name *
+            <input required className={inputCls} value={form.cups_name} onChange={(e) => setForm({ ...form, cups_name: e.target.value })} />
+          </label>
+          <label className="text-xs text-zinc-400 space-y-1">Model
+            <input className={inputCls} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
+          </label>
+          <label className="text-xs text-zinc-400 space-y-1">Location
+            <input className={inputCls} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+          </label>
+          <label className="text-xs text-zinc-400 space-y-1 md:col-span-2">Supported Paper Sizes (comma separated)
+            <input className={inputCls} value={form.supported_paper_sizes} onChange={(e) => setForm({ ...form, supported_paper_sizes: e.target.value })} />
+          </label>
+          <div className="flex flex-wrap gap-6 text-xs text-zinc-300 md:col-span-2">
+            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={form.is_color_supported} onChange={(e) => setForm({ ...form, is_color_supported: e.target.checked })} /> Color supported</label>
+            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={form.is_default} onChange={(e) => setForm({ ...form, is_default: e.target.checked })} /> Default printer</label>
+            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={form.is_online} onChange={(e) => setForm({ ...form, is_online: e.target.checked })} /> Turned on</label>
+          </div>
+          {formError && <p className="text-xs text-rose-400 md:col-span-2">{formError}</p>}
+          <div className="md:col-span-2">
+            <button type="submit" disabled={saving} className="px-5 py-2 bg-gold-500 hover:bg-gold-400 disabled:opacity-50 rounded-xl text-xs font-bold text-black transition">
+              {saving ? 'Saving...' : 'Save Printer'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {testMessage && (
         <div className="p-4 rounded-xl bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-sm flex items-center gap-3">
@@ -100,6 +181,16 @@ export const Printers: React.FC = () => {
               <span className="text-xs text-zinc-500">
                 {printer.is_default ? '⭐ Default Printer' : 'Backup Printer'}
               </span>
+              <button
+                onClick={() => togglePower(printer)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                  printer.is_online
+                    ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300 hover:bg-emerald-900/60'
+                    : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:bg-zinc-800'
+                }`}
+              >
+                <Power className="w-3.5 h-3.5" /> {printer.is_online ? 'On' : 'Off'}
+              </button>
               <button
                 onClick={() => handleTestPrint(printer.id)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg text-xs font-semibold text-zinc-200 transition"

@@ -137,6 +137,11 @@ async def confirm_payment(
             customer,
             f"🖨️ *Print complete!*\n\nOrder *#{order.id}* is ready for pickup.{serial}\n\n"
             f"📍 {settings.PICKUP_ADDRESS}\n\nThank you for using {settings.BUSINESS_NAME}! 🙏")
+    elif order.current_state == "QUEUED" and customer:
+        await messenger.send_message(
+            customer,
+            f"⏳ Order *#{order.id}* is paid and in the print queue. "
+            "Our printers are off right now; it will print automatically as soon as one is back on.")
     elif customer:
         await messenger.send_message(
             customer,
@@ -146,6 +151,25 @@ async def confirm_payment(
     await websocket_manager.broadcast_event(
         "order_updated", {"order_id": order.id, "status": order.current_state, "payment_status": "PAID"})
     return {"status": "paid", "order_state": order.current_state}
+
+
+async def drain_print_queue(db) -> int:
+    """Print jobs that were waiting for a printer and notify their customers."""
+    printed = print_service.dispatch_queue(db)
+    for order_id in printed:
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if not order:
+            continue
+        db.refresh(order)
+        if order.customer:
+            serial = f"\n🔖 Reference: *{order.print_serial}*" if order.print_serial else ""
+            await messenger.send_message(
+                order.customer,
+                f"🖨️ *Print complete!*\n\nOrder *#{order.id}* is ready for pickup.{serial}\n\n"
+                f"📍 {settings.PICKUP_ADDRESS}\n\nThank you for using {settings.BUSINESS_NAME}! 🙏")
+        await websocket_manager.broadcast_event(
+            "order_updated", {"order_id": order.id, "status": order.current_state})
+    return len(printed)
 
 
 async def cancel_order(db, order: Order, *, source: str, notes: str = "Cancelled") -> bool:

@@ -9,6 +9,7 @@ from app.models.printer import Printer
 from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterOut
 from app.api.auth import get_current_admin
 from app.services.print_service import print_service
+from app.services import payment_service
 from app.config import settings
 
 router = APIRouter(prefix="/api/printers", tags=["Printers"])
@@ -22,8 +23,22 @@ def get_printers(
     printers = print_service.sync_printers(db)
     return printers
 
+def _apply_power_state(printer: Printer) -> None:
+    if not printer.is_online:
+        printer.status = "OFFLINE"
+    elif printer.status in ("OFFLINE", "ERROR"):
+        printer.status = "ONLINE"
+
+
+def _single_default(db: Session, printer: Printer) -> None:
+    if printer.is_default:
+        for other in db.query(Printer).filter(Printer.is_default == True).all():
+            if other.id != printer.id:
+                other.is_default = False
+
+
 @router.post("", response_model=PrinterOut)
-def create_printer(
+async def create_printer(
     req: PrinterCreate,
     db: Session = Depends(get_db),
     current_admin: Admin = Depends(get_current_admin)
@@ -34,13 +49,18 @@ def create_printer(
         raise HTTPException(status_code=400, detail=f"Printer with CUPS name '{req.cups_name}' already exists")
 
     printer = Printer(**req.model_dump())
+    _apply_power_state(printer)
     db.add(printer)
     db.commit()
+    _single_default(db, printer)
+    db.commit()
     db.refresh(printer)
+    if printer.is_online:
+        await payment_service.drain_print_queue(db)
     return printer
 
 @router.put("/{printer_id}", response_model=PrinterOut)
-def update_printer(
+async def update_printer(
     printer_id: int,
     req: PrinterUpdate,
     db: Session = Depends(get_db),
@@ -51,11 +71,21 @@ def update_printer(
     if not printer:
         raise HTTPException(status_code=404, detail="Printer not found")
 
-    for key, val in req.model_dump(exclude_unset=True).items():
+    changes = req.model_dump(exclude_unset=True)
+    new_cups = changes.get("cups_name")
+    if new_cups and new_cups != printer.cups_name:
+        if db.query(Printer).filter(Printer.cups_name == new_cups).first():
+            raise HTTPException(status_code=400, detail=f"Printer with CUPS name '{new_cups}' already exists")
+    for key, val in changes.items():
         setattr(printer, key, val)
+    _apply_power_state(printer)
+    _single_default(db, printer)
 
     db.commit()
     db.refresh(printer)
+    # Switching a printer on releases everything that piled up while all were off.
+    if printer.is_online:
+        await payment_service.drain_print_queue(db)
     return printer
 
 @router.post("/{printer_id}/test-print")

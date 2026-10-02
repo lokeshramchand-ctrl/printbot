@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -12,6 +13,10 @@ from app.services.serial_service import get_or_create_order_serial, allocate_que
 from app.services.pdf_stamp_service import stamp_printable_pdf, customer_label_for
 
 logger = logging.getLogger("print_service")
+
+# Serialises queue draining so two triggers (printer switched on + new payment)
+# can never walk the same QUEUED jobs concurrently.
+_dispatch_lock = threading.Lock()
 
 # Try pycups import if Linux CUPS is installed
 try:
@@ -39,8 +44,10 @@ class PrintService:
                     status_str = "ONLINE" if state == 3 else ("BUSY" if state == 4 else "OFFLINE")
                     
                     if existing:
-                        existing.is_online = is_accepting
-                        existing.status = status_str
+                        # CUPS may switch a printer off, but only an admin switches it back on.
+                        if not is_accepting:
+                            existing.is_online = False
+                        existing.status = status_str if existing.is_online else "OFFLINE"
                     else:
                         new_p = Printer(
                             name=p_name.replace("_", " ").title(),
@@ -74,6 +81,48 @@ class PrintService:
         return db.query(Printer).all()
 
     @classmethod
+    def pick_printer(cls, db: Session, color_mode: Optional[str], paper_size: Optional[str],
+                     preferred_id: Optional[int] = None) -> Optional[Printer]:
+        """Choose an online printer able to handle the job, or None.
+
+        An online printer is the only candidate; if several are on, the preferred
+        one (admin's explicit choice) wins, otherwise the least-used one, so work
+        is spread across all active printers.
+        """
+        candidates = []
+        for p in db.query(Printer).all():
+            if not p.is_online:
+                continue
+            if (color_mode or "").upper() == "COLOR" and not p.is_color_supported:
+                continue
+            sizes = {x.strip().upper() for x in (p.supported_paper_sizes or "").split(",") if x.strip()}
+            if paper_size and sizes and paper_size.upper() not in sizes:
+                continue
+            candidates.append(p)
+        if not candidates:
+            return None
+        for p in candidates:
+            if preferred_id and p.id == preferred_id:
+                return p
+        candidates.sort(key=lambda p: (p.status == "BUSY", p.total_printed_jobs or 0, not p.is_default, p.id))
+        return candidates[0]
+
+    @classmethod
+    def dispatch_queue(cls, db: Session) -> List[str]:
+        """Print every QUEUED job (oldest first) that now has an online printer.
+
+        Called when a printer is switched on/added. Returns order ids that printed.
+        """
+        printed: List[str] = []
+        with _dispatch_lock:
+            jobs = db.query(PrintJob).filter(PrintJob.status == "QUEUED").all()
+            jobs.sort(key=lambda j: (j.queue_sequence or 0, j.id))
+            for job in jobs:
+                if cls.execute_print_job(db, job.id):
+                    printed.append(job.order_id)
+        return printed
+
+    @classmethod
     def submit_job(cls, db: Session, order: Order, target_printer_id: Optional[int] = None) -> PrintJob:
         """
         Submits an order to the print queue.
@@ -83,14 +132,9 @@ class PrintService:
         calling submit_job again for a retry/reprint of the same order
         never mints a second serial or double-stamps the file.
         """
-        # Find printer
-        printer = None
-        if target_printer_id:
-            printer = db.query(Printer).filter(Printer.id == target_printer_id).first()
-        if not printer:
-            printer = db.query(Printer).filter(Printer.is_default == True).first()
-        if not printer:
-            printer = db.query(Printer).first()
+        # Find an online printer; if none is on, the job simply waits in the queue
+        # (printer_id stays empty) until dispatch_queue() finds one.
+        printer = cls.pick_printer(db, order.color_mode, order.paper_size, target_printer_id)
 
         # --- Serial numbering: order-level, idempotent (see serial_service) ---
         serial = get_or_create_order_serial(db, order)
@@ -135,7 +179,9 @@ class PrintService:
             from_status=previous_state,
             to_status="QUEUED",
             trigger_source="SYSTEM",
-            notes=f"Order added to print queue (serial {serial}, position #{queue_sequence}) for printer {printer.name if printer else 'Default'}"
+            notes=(f"Order added to print queue (serial {serial}, position #{queue_sequence}) for printer {printer.name}"
+                   if printer else
+                   f"Order queued (serial {serial}, position #{queue_sequence}); waiting for a printer to be turned on")
         )
         db.add(history)
         db.commit()
@@ -155,7 +201,23 @@ class PrintService:
             return False
 
         order = db.query(Order).filter(Order.id == job.order_id).first()
+        if order and order.current_state in ("CANCELLED", "REFUNDED"):
+            job.status = "CANCELLED"
+            db.commit()
+            return False
+
         printer = db.query(Printer).filter(Printer.id == job.printer_id).first() if job.printer_id else None
+        if db.query(Printer).count() > 0 and (not printer or not printer.is_online):
+            # Assigned printer is off (or none yet): move to any online printer, else keep waiting.
+            printer = cls.pick_printer(db, job.color_mode, job.paper_size)
+            if not printer:
+                job.printer_id = None
+                db.commit()
+                return False
+            job.printer_id = printer.id
+            if order:
+                order.printer_id = printer.id
+            db.commit()
 
         if not order or not order.printable_pdf_path or not os.path.exists(order.printable_pdf_path):
             job.status = "FAILED"
