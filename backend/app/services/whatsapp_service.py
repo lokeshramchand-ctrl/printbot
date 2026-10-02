@@ -107,18 +107,20 @@ class WhatsAppService:
         }
         return await self._post_request("messages", payload)
 
-    async def send_payment_message(self, to_phone: str, order_summary_text: str, payment_url: str, amount_text: str) -> Optional[Dict[str, Any]]:
-        """Send payment link message with action button."""
-        message_text = (
-            f"{order_summary_text}\n\n"
-            f"💳 *Click below to pay {amount_text}*:\n"
-            f"{payment_url}\n\n"
-            "⚡ Your order will be automatically printed immediately after payment completion."
-        )
-        buttons = [
-            ("PAY_NOW", f"💳 Pay {amount_text}"),
-            ("CANCEL_ORDER", "❌ Cancel Order")
-        ]
+    async def send_payment_message(
+        self, to_phone: str, order_summary_text: str, amount_text: str, order_id: str, payment_url: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Order summary with a pay action (real link, or a demo confirm button)."""
+        if payment_url:
+            message_text = (
+                f"{order_summary_text}\n\n"
+                f"💳 *Pay {amount_text}:*\n{payment_url}\n\n"
+                "⚡ Your order will be printed automatically right after payment."
+            )
+            buttons = [("CANCEL_ORDER", "❌ Cancel Order")]
+        else:
+            message_text = f"{order_summary_text}\n\n🧪 Demo mode: tap Pay to simulate a successful payment."
+            buttons = [(f"DEMO_PAY_{order_id}", f"💳 Pay {amount_text}"), ("CANCEL_ORDER", "❌ Cancel Order")]
         return await self.send_buttons(to_phone, message_text, buttons)
 
     async def download_incoming_media(self, media_id: str, save_path: str) -> bool:

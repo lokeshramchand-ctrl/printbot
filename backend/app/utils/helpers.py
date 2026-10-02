@@ -27,3 +27,8 @@ def format_file_size(size_bytes: int) -> str:
         return f"{size_bytes / 1024:.1f} KB"
     else:
         return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
+def escape_markdown(text: str) -> str:
+    """Escape characters that break Telegram's legacy Markdown parse mode."""
+    return re.sub(r"([_*`\[])", lambda m: "\\" + m.group(1), text or "")
