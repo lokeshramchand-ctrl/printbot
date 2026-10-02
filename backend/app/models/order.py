@@ -48,6 +48,8 @@ class Order(Base):
     print_serial = Column(String(40), unique=True, nullable=True, index=True)
     serial_stamped_at = Column(DateTime, nullable=True)  # set once the PDF has been stamped (idempotency guard)
     
+    files_purged_at = Column(DateTime, nullable=True)  # set by the retention job once uploads are deleted
+
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
