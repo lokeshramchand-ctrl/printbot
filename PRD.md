@@ -2,7 +2,7 @@
 
 ## 1. Summary
 
-PrintBot automates a walk-in print shop. Customers send a document to a Telegram (primary) or WhatsApp bot, choose print options with buttons, pay online, and the job goes straight to the shop's print queue. The shop owner manages orders, printers, pricing and customers from a web dashboard.
+PrintBot automates a walk-in print shop. Customers send a document to a Telegram (primary) or WhatsApp bot, choose print options with buttons, pay online, and the job goes straight to the shop's print queue. The shop owner manages orders, printers, pricing and customers from a web dashboard or a mobile app.
 
 ## 2. Problem
 
@@ -54,10 +54,11 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 - FR-14b Copies are written out in the printable PDF so each is individually stamped; double-sided jobs pad odd-length documents with a stamped blank back page so every copy starts on a fresh sheet.
 - FR-15 Jobs are queued in strict submission order; failed jobs can be retried without a new serial or double stamping.
 - FR-16 Print through CUPS printers; a virtual printer for demo and test.
+- FR-16a A printer records how it is connected (`CUPS`, `WIFI`, `BLUETOOTH`, `USB`) and its address. Adding a Wi-Fi printer creates a driverless CUPS queue for it.
 
 ### 5.4 Admin dashboard
 - FR-17 Login (JWT). All admin API routes and the live WebSocket require authentication.
-- FR-18 Pages: Dashboard (analytics, live events), Orders (search, filter, detail, actions), Print Queue, Printers (sync, status), Pricing (edit rules), Customers, Settings (payment mode and channel status), Print Agents (pairing codes, status, revoke).
+- FR-18 Pages: Dashboard (analytics, live events), Orders (search, filter, detail, actions), Print Queue, Printers (sync, status), Pricing (edit rules), Customers, Settings (payment mode and channel status).
 - FR-19 Live updates when orders change status.
 
 ### 5.4a Operator mobile app (`mobile/`)
@@ -89,13 +90,16 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 ## 8. Status (2026-10)
 
 - Telegram flow, demo and Razorpay payment, admin dashboard, serial stamping, pickup codes and cover sheets, retention and schema validation are implemented.
-- Test suite: 67 tests pass against real MongoDB in Docker.
+- Operator mobile app with printer discovery is built and type-checked; it has not been run on a physical device or real printers.
+- Backend test suite: 77 pass, 7 skipped (in-memory MongoDB). The skipped tests need real MongoDB and run under `docker compose up --build`.
 - WhatsApp is implemented but lightly tested.
 
 ## 9. Risks and open questions
 - Bot tokens or Razorpay keys leaked in docs or chat → rotate and keep them in env only.
 - Sync DB and CUPS calls on the event loop limit concurrency; fine for one shop, needs work for load.
 - Refunds are flagged and admin-initiated; whether to automate Razorpay refunds is undecided.
-- Windows exe is unsigned: SmartScreen or antivirus may warn; code signing is undecided.
+- Mobile discovery is unverified on hardware: Bonjour library behaviour on the current React Native version, Android and iOS rules for plain HTTP to LAN printers, and Bluetooth coverage of office printers all need a device test.
+- Bluetooth printers cannot be driven from the phone; the server machine must pair with them. Whether to support that is undecided.
+- The printer test page only generates a PDF and does not reach CUPS.
 - WhatsApp needs a hardening and test pass before being promoted to a primary channel.
 - Pricing rules for non-standard paper (A3, legal, thick stock) and discounts are not yet defined.

@@ -136,5 +136,6 @@ PAYMENT_PENDING ──(webhook / demo pay)──▶ PAID ──▶ QUEUED ──
 ## 10. Known gaps
 
 - WhatsApp is implemented but far less exercised than Telegram.
+- The mobile app and its Wi-Fi/Bluetooth discovery are not yet verified on a physical device or real printers. `POST /api/printers/{id}/test-print` only generates a PDF and never sends it to CUPS.
 - Handlers make synchronous DB and CUPS calls on the event loop; non-equality filters in the shim are O(collection).
 - Telegram polling runs in the API process, so scaling to several replicas needs a webhook, or a single poller.

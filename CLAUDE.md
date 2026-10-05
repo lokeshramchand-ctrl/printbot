@@ -27,6 +27,9 @@ python -m uvicorn app.main:app --reload --port 8000     # docs: /docs
 cd frontend && npm install && npm run dev                # http://localhost:5173, admin / admin123
 # tests
 cd backend && python -m pytest tests -v
+# mobile app (needs a dev client; Expo Go will not work) and its device-free checks
+cd mobile && npm install && npx expo run:android
+cd mobile && npm run typecheck && npm run selftest
 ```
 Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Settings live in
 `backend/app/config.py` (pydantic-settings; unknown vars ignored).

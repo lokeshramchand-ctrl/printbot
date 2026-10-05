@@ -1,11 +1,12 @@
 # PrintBot
 
-Automated print-shop platform. Customers send a document to a Telegram or WhatsApp bot, choose print options with buttons, pay online through Razorpay, and the job goes straight into the shop's print queue. Shop staff manage orders, printers, pricing and customers from a web dashboard.
+Automated print-shop platform. Customers send a document to a Telegram or WhatsApp bot, choose print options with buttons, pay online through Razorpay, and the job goes straight into the shop's print queue. Shop staff manage orders, printers, pricing and customers from a web dashboard or the operator mobile app.
 
 - Primary channel: Telegram (`@capstoneprinterbot`)
 - Secondary channel: WhatsApp Cloud API (implemented, less exercised)
 - Payments: Razorpay payment links with a signed webhook, or a demo mode for development
 - Admin dashboard: React, served on port 80 in Docker or 5173 in development
+- Operator mobile app: Expo / React Native (`mobile/`), with Wi-Fi and Bluetooth printer discovery
 - Database: MongoDB 7
 
 ## Contents
@@ -17,14 +18,15 @@ Automated print-shop platform. Customers send a document to a Telegram or WhatsA
 5. [Configuration](#configuration)
 6. [Payments](#payments)
 7. [Admin dashboard](#admin-dashboard)
-8. [Order lifecycle](#order-lifecycle)
-9. [Print serial numbering](#print-serial-numbering)
-10. [Security and privacy](#security-and-privacy)
-11. [Testing](#testing)
-12. [Project structure](#project-structure)
-13. [Known limitations](#known-limitations)
-14. [Further documentation](#further-documentation)
-15. [License](#license)
+8. [Mobile app and printer discovery](#mobile-app-and-printer-discovery)
+9. [Order lifecycle](#order-lifecycle)
+10. [Print serial numbering](#print-serial-numbering)
+11. [Security and privacy](#security-and-privacy)
+12. [Testing](#testing)
+13. [Project structure](#project-structure)
+14. [Known limitations](#known-limitations)
+15. [Further documentation](#further-documentation)
+16. [License](#license)
 
 ## Business context
 
@@ -37,7 +39,7 @@ PrintBot removes those steps. Its goals are:
 3. The operator can see, track and trace every job, including by a serial number stamped on each printed page, without touching the customer chat.
 4. The whole system deploys on a shop PC with one command.
 
-Out of scope for version 1: binding, lamination, photo printing, large format, multi-shop or multi-tenant use, native mobile apps, and customer accounts beyond the chat identity.
+Out of scope for version 1: binding, lamination, photo printing, large format, multi-shop or multi-tenant use, native apps for customers (they use Telegram or WhatsApp), and customer accounts beyond the chat identity. The shop operator has a mobile app, see below.
 
 ## How it works
 
@@ -46,8 +48,9 @@ Customer --> Telegram (long polling or webhook) --+
          --> WhatsApp Cloud API webhook ----------+
                                                    v
 Razorpay --webhook--> FastAPI backend (:8000) <-- REST + WebSocket -- React dashboard
-                       |             |
-                    MongoDB 7     CUPS printer or virtual printer
+                       |             |      ^
+                    MongoDB 7        |      +--- REST + WebSocket -- Mobile app (Expo)
+                                CUPS printer or virtual printer
 ```
 
 Customer journey:
@@ -85,6 +88,7 @@ Printing
 Administration
 - JWT login. All admin API routes and the live WebSocket require authentication.
 - Live dashboard updates when orders change status.
+- Operator mobile app with the same login and live feed, plus printer discovery over Wi-Fi and Bluetooth.
 
 ## Quick start
 
@@ -134,6 +138,14 @@ Frontend:
 cd frontend
 npm install
 npm run dev                       # http://localhost:5173
+```
+
+Mobile app (optional, needs a phone or emulator; see [Mobile app](#mobile-app-and-printer-discovery)):
+
+```bash
+cd mobile
+npm install
+npx expo run:android
 ```
 
 The first start seeds an administrator and default pricing rules. In development the default login is `admin` / `admin123`. Change it before any real use; production refuses to start with this password.
@@ -194,7 +206,7 @@ Sign in at the dashboard URL. Pages:
 | Dashboard | Analytics and live events |
 | Orders | Search, filter, order detail, and actions (print, retry, cancel, refund), file download |
 | Print Queue | Queued and printing jobs, oldest first |
-| Printers | Sync CUPS printers, view status, test print |
+| Printers | Sync CUPS printers, view status, switch on or off, set default, test page |
 | Pricing | Create and edit pricing rules |
 | Customers | Customer list |
 | Settings | Payment mode and channel status |
@@ -202,6 +214,29 @@ Sign in at the dashboard URL. Pages:
 Order actions are available through `POST /api/orders/{order_id}/action` with `PRINT`, `RETRY`, `CANCEL` or `REFUND`. Printing is refused for orders that are unpaid, cancelled or refunded.
 
 The interface uses a black and gold theme, defined in `frontend/tailwind.config.js`. Status colours stay emerald (success), amber (pending) and rose (failed).
+
+## Mobile app and printer discovery
+
+`mobile/` is an Expo (SDK 57) + React Native + TypeScript app for the shop operator, in the same black and gold theme. It signs in with the dashboard login against the same API and WebSocket feed.
+
+| Screen | Purpose |
+|---|---|
+| Dashboard | Today's KPIs, 7-day revenue, live connection status |
+| Orders | Search and filter, detail, print, retry, cancel, refund, view or share the PDF |
+| Queue | Printing and waiting jobs, "Print now" |
+| Printers | Online switch, default, test page, connection type |
+| Find printers | Scan Wi-Fi and Bluetooth, then add a printer to PrintBot |
+| More | Pricing, customers, settings, sign out |
+
+The app uses native modules for Bluetooth and Bonjour, so Expo Go does not work. Build a development client with `npx expo run:android` (see `mobile/README.md`). On the sign-in screen use an address the phone can reach, such as `192.168.1.10:8000`, not `localhost`.
+
+How printers are found:
+
+- **Wi-Fi.** Most printers advertise themselves on the network with Bonjour (`_ipp._tcp`, `_ipps._tcp`, `_printer._tcp`, `_pdl-datastream._tcp`) and accept jobs over IPP. The advertisement already contains make, model, colour, duplex and paper sizes. A "Deep scan" probes every address on the phone's network for IPP on port 631 when multicast is filtered.
+- **Bluetooth.** Used mainly by portable, label and receipt printers. Office printers mostly use Bluetooth only for Wi-Fi setup, so they often do not appear; use the Wi-Fi scan for them.
+- **Adding.** "Add to PrintBot" calls `POST /api/printers` with `connection_type` (`WIFI` or `BLUETOOTH`) and `connection_uri`. For `WIFI` the backend creates a driverless (IPP Everywhere) CUPS queue, so the server must be able to reach the printer's IP. A `BLUETOOTH` printer is recorded only; the server machine must be paired with it separately. Jobs are never sent from the phone to the printer.
+
+Status: type-checked and unit-tested for the IPP and Bonjour logic, but not yet exercised on a physical device or real printers.
 
 ## Order lifecycle
 
@@ -271,6 +306,8 @@ cd frontend
 npm run build
 ```
 
+Mobile app (no device needed): `cd mobile && npm run typecheck && npm run selftest`. The self-test covers the IPP encoder and decoder, Bonjour record merging and the Bluetooth printer heuristics. The scanners themselves need a physical phone and real printers.
+
 Never point tests at a hosted database.
 
 ## Project structure
@@ -291,11 +328,17 @@ printbot/
   frontend/
     src/pages/      Dashboard pages
     src/services/   Axios API client
+  mobile/
+    src/screens/    App screens
+    src/discovery/  Printer discovery: Bonjour, IPP, Bluetooth, registration
+    src/context/    Auth session and live WebSocket feed
+    scripts/        Device-free self-test
   docker/           MongoDB init script
   testdata/         Sample documents for the end-to-end test
   docker-compose.yml
   PRD.md
   ARCHITECTURE.md
+  CLAUDE.md
 ```
 
 ## Known limitations
@@ -305,11 +348,15 @@ printbot/
 - Telegram polling runs inside the API process. Running several replicas requires webhook mode or a single poller.
 - Refunds are initiated by an administrator; automatic refunds are not implemented.
 - Pricing for non-standard paper and discounts is not yet defined.
+- The mobile app and its printer discovery are not yet verified on a physical device or real printers. Bluetooth printers are recorded but need pairing on the server.
+- `POST /api/printers/{id}/test-print` only generates a test PDF; it does not send it to CUPS.
 
 ## Further documentation
 
 - `PRD.md`: product requirements, goals, success metrics and open questions.
-- `ARCHITECTURE.md`: components, deployment, the Mongo shim, schema and security design.
+- `ARCHITECTURE.md`: components, deployment, the mobile app, the Mongo shim, schema and security design.
+- `mobile/README.md`: building and running the mobile app, how discovery works, permissions.
+- `CLAUDE.md`: short orientation for coding agents working in this repo.
 - `.env.example`: every configuration option.
 
 ## License
