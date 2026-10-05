@@ -19,7 +19,7 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 **Non-goals (v1)**
 - Binding, lamination, photo printing, or large format.
 - Multi-shop or multi-tenant SaaS.
-- Native customer mobile apps.
+- Native customer mobile apps (customers use Telegram/WhatsApp). The operator app in `mobile/` is in scope, see 5.4.
 - Customer accounts or logins beyond their chat identity.
 
 ## 4. Users
@@ -59,6 +59,12 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 - FR-17 Login (JWT). All admin API routes and the live WebSocket require authentication.
 - FR-18 Pages: Dashboard (analytics, live events), Orders (search, filter, detail, actions), Print Queue, Printers (sync, status), Pricing (edit rules), Customers, Settings (payment mode and channel status), Print Agents (pairing codes, status, revoke).
 - FR-19 Live updates when orders change status.
+
+### 5.4a Operator mobile app (`mobile/`)
+- FR-19a Android/iOS app for the shop operator with the same login and live feed as the dashboard: Dashboard, Orders (detail, print, retry, cancel, refund, view PDF), Queue, Printers, Pricing, Customers, Settings.
+- FR-19b Printer discovery: scan the Wi-Fi network (Bonjour/mDNS, with an IPP port-631 sweep as fallback) and Bluetooth LE for printers, read their make, model, colour, duplex and paper sizes, and add one to PrintBot with one tap.
+- FR-19c Adding a Wi-Fi printer creates a driverless (IPP Everywhere) CUPS queue on the server. A Bluetooth printer is recorded only; the server machine must be paired with it separately. Jobs are never sent from the phone to the printer.
+- Status: built and type-checked, not yet exercised on a physical device or real printers.
 
 ### 5.5 Data and privacy
 - FR-20 Uploaded and printable files for finished orders are deleted after a configurable retention period.
