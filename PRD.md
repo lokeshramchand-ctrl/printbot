@@ -57,7 +57,6 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 - FR-22 Admin creates an agent in the dashboard and gets a one-time pairing code; the agent app pairs and receives a revocable token.
 - FR-23 Agents report their printers by heartbeat; printers unseen for 90 s show as unreachable.
 - FR-24 Agents claim queued jobs atomically (no job prints twice), print them silently with the job's paper size, duplex, colour and copies, and report completed or failed. Jobs of a silent agent are re-queued.
-- FR-25 A Windows tray app (single exe, no external PDF viewer, optional start with Windows) and a Flutter app (Windows, Android) implement the agent.
 
 ### 5.4 Admin dashboard
 - FR-17 Login (JWT). All admin API routes and the live WebSocket require authentication.
@@ -88,7 +87,7 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 
 - Telegram flow, demo and Razorpay payment, admin dashboard, serial stamping, retention and schema validation are implemented.
 - Test suite: 67 tests pass against real MongoDB in Docker.
-- Print agents (Flutter and Windows exe) are implemented; the Windows agent has passed 8 unit tests and printer enumeration but has not yet printed a real page or been paired with a live backend.
+- Print agent clients live outside this repo; the backend agent API is implemented.
 - WhatsApp is implemented but lightly tested.
 
 ## 9. Risks and open questions

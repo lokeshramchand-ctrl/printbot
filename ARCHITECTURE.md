@@ -14,7 +14,7 @@
                                MongoDB 7        CUPS (pycups) or
                                (auth on)        virtual printer
                                      ▲
- Print agent (Windows exe / Flutter) ┘  HTTPS bearer token: heartbeat, claim, file, report
+ Print agent (external) ┘  HTTPS bearer token: heartbeat, claim, file, report
 ```
 
 | Component | Tech | Notes |
@@ -25,7 +25,6 @@
 | Documents | PyMuPDF, Pillow, python-docx, LibreOffice | Convert any upload to a printable PDF, count pages |
 | Payments | Razorpay (or demo mode) | Signed webhook → shared `confirm_payment` |
 | Printing | CUPS via pycups, or simulated | `USE_VIRTUAL_PRINTER` |
-| Print agents | Flutter (`agent/`), Python tray exe (`agent-windows/`) | Remote PCs/phones that print claimed jobs |
 
 ## 2. Deployment (`docker-compose.yml`)
 
@@ -92,7 +91,6 @@ PAYMENT_PENDING ──(webhook / demo pay)──▶ PAID ──▶ QUEUED ──
 - `POST /api/agent/heartbeat` upserts the agent's printers (`Printer.agent_id`, `last_seen_at`); a printer unseen for > 90 s is unreachable.
 - `POST /api/agent/jobs/claim` atomically flips QUEUED→PRINTING for that agent's printers; `GET …/file` downloads the printable PDF; `POST …/report` sets COMPLETED or PRINT_FAILED.
 - `execute_print_job` never prints agent printers locally; jobs wait QUEUED. Claimed jobs of an agent silent for 10 min are re-queued.
-- **Windows agent** (`agent-windows/printbot_agent`): `runner` loops claim → download → print → report and retries a report after network failure; `printers` renders each PDF page with PyMuPDF and prints through the driver via pywin32 GDI (silent, no PDF viewer). Paper size, duplex and colour are set per job in DEVMODE; copies are repeated documents because drivers disagree on honouring a copies setting. `gui` is a tkinter window plus pystray tray icon; token and server URL live in `%APPDATA%\PrintBotAgent\config.json`; single instance; optional start with Windows. Packaged by PyInstaller into one unsigned exe.
 
 ## 7. The Mongo shim
 

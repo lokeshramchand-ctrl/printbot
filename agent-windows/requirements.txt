@@ -1,5 +1,0 @@
-httpx>=0.27
-pystray>=0.19
-pywin32>=306
-pymupdf>=1.24
-Pillow>=10
