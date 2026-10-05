@@ -11,7 +11,6 @@ class PrintJob(Base):
     printer_id = Column(Integer, ForeignKey("printers.id"), nullable=True, index=True)
     
     cups_job_id = Column(Integer, nullable=True)
-    agent_id = Column(Integer, nullable=True, index=True)  # agent that claimed the job
     status = Column(String(20), default="QUEUED", index=True) # QUEUED, PRINTING, COMPLETED, FAILED, CANCELLED
     
     copies = Column(Integer, default=1)

@@ -9,7 +9,7 @@ from app.models.printer import Printer
 from app.schemas.printer import PrinterCreate, PrinterUpdate, PrinterOut
 from app.api.auth import get_current_admin
 from app.services.print_service import print_service
-from app.services import payment_service, agent_service
+from app.services import payment_service
 from app.config import settings
 
 router = APIRouter(prefix="/api/printers", tags=["Printers"])
@@ -21,7 +21,6 @@ def get_printers(
 ):
     """List printers and sync status from CUPS."""
     printers = print_service.sync_printers(db)
-    agent_service.refresh_printer_statuses(db)
     return printers
 
 def _apply_power_state(printer: Printer) -> None:

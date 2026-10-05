@@ -19,7 +19,7 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 **Non-goals (v1)**
 - Binding, lamination, photo printing, or large format.
 - Multi-shop or multi-tenant SaaS.
-- Native customer mobile apps (a print-agent app for shop staff is in scope).
+- Native customer mobile apps.
 - Customer accounts or logins beyond their chat identity.
 
 ## 4. Users
@@ -53,11 +53,6 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 - FR-15 Jobs are queued in strict submission order; failed jobs can be retried without a new serial or double stamping.
 - FR-16 Print through CUPS printers; a virtual printer for demo and test.
 
-### 5.3a Print agents
-- FR-22 Admin creates an agent in the dashboard and gets a one-time pairing code; the agent app pairs and receives a revocable token.
-- FR-23 Agents report their printers by heartbeat; printers unseen for 90 s show as unreachable.
-- FR-24 Agents claim queued jobs atomically (no job prints twice), print them silently with the job's paper size, duplex, colour and copies, and report completed or failed. Jobs of a silent agent are re-queued.
-
 ### 5.4 Admin dashboard
 - FR-17 Login (JWT). All admin API routes and the live WebSocket require authentication.
 - FR-18 Pages: Dashboard (analytics, live events), Orders (search, filter, detail, actions), Print Queue, Printers (sync, status), Pricing (edit rules), Customers, Settings (payment mode and channel status), Print Agents (pairing codes, status, revoke).
@@ -87,7 +82,6 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 
 - Telegram flow, demo and Razorpay payment, admin dashboard, serial stamping, retention and schema validation are implemented.
 - Test suite: 67 tests pass against real MongoDB in Docker.
-- Print agent clients live outside this repo; the backend agent API is implemented.
 - WhatsApp is implemented but lightly tested.
 
 ## 9. Risks and open questions
@@ -95,6 +89,5 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 - Sync DB and CUPS calls on the event loop limit concurrency; fine for one shop, needs work for load.
 - Refunds are flagged and admin-initiated; whether to automate Razorpay refunds is undecided.
 - Windows exe is unsigned: SmartScreen or antivirus may warn; code signing is undecided.
-- Real-printer validation of the Windows agent (paper, duplex, colour, copies across drivers) is outstanding.
 - WhatsApp needs a hardening and test pass before being promoted to a primary channel.
 - Pricing rules for non-standard paper (A3, legal, thick stock) and discounts are not yet defined.

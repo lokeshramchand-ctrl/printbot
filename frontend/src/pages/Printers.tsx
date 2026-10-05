@@ -40,7 +40,7 @@ export const Printers: React.FC = () => {
 
   useEffect(() => {
     fetchPrinters();
-    // Agents (re)report printers and finish jobs in the background; keep the cards live.
+    // Jobs finish in the background; keep the cards live.
     return subscribe('printers_updated', () => fetchPrinters());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -157,7 +157,7 @@ export const Printers: React.FC = () => {
 
               <h2 className="text-lg font-bold text-white">{printer.name}</h2>
               <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                {printer.agent_id ? `Agent #${printer.agent_id}` : `CUPS: ${printer.cups_name}`}
+                {`CUPS: ${printer.cups_name}`}
               </p>
 
               <div className="mt-4 space-y-1.5 text-xs text-zinc-300">

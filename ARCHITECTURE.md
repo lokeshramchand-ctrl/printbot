@@ -13,8 +13,6 @@
                                      │              │
                                MongoDB 7        CUPS (pycups) or
                                (auth on)        virtual printer
-                                     ▲
- Print agent (external) ┘  HTTPS bearer token: heartbeat, claim, file, report
 ```
 
 | Component | Tech | Notes |
@@ -49,7 +47,6 @@
   - `print_service.py` — printer sync, `submit_job`, `execute_print_job`.
   - `serial_service.py`, `pdf_stamp_service.py` — order serial and page stamp.
   - `websocket_service.py` — live dashboard events.
-  - `agent_service.py` + `api/agents.py` — agent pairing, heartbeat, claim, report.
 - `models/` — Customer, Order, PrintJob, Payment, Printer, PricingRule, OrderStatusHistory, Message, WebhookEvent, SerialCounter, Admin.
 - `db_schema.py` — collection validators, indexes, TTLs.
 
@@ -85,13 +82,6 @@ PAYMENT_PENDING ──(webhook / demo pay)──▶ PAID ──▶ QUEUED ──
 - The serial is generated once per order and reused on retry. `queue_sequence` gives strict submission ordering across day boundaries.
 - `pdf_stamp_service` stamps the serial on the printable PDF only, never the uploaded original, once (`serial_stamped_at`). It draws with `insert_text` at an explicit baseline, because `insert_textbox` fails silently when the text doesn't fit.
 
-## 6a. Print agents
-
-- Dashboard creates an agent and shows a one-time pairing code. The app exchanges it for a bearer token (only the SHA-256 is stored); revoking invalidates it.
-- `POST /api/agent/heartbeat` upserts the agent's printers (`Printer.agent_id`, `last_seen_at`); a printer unseen for > 90 s is unreachable.
-- `POST /api/agent/jobs/claim` atomically flips QUEUED→PRINTING for that agent's printers; `GET …/file` downloads the printable PDF; `POST …/report` sets COMPLETED or PRINT_FAILED.
-- `execute_print_job` never prints agent printers locally; jobs wait QUEUED. Claimed jobs of an agent silent for 10 min are re-queued.
-
 ## 7. The Mongo shim
 
 `SessionLocal` is a `MongoSession` that keeps SQLAlchemy-style models:
@@ -122,5 +112,4 @@ PAYMENT_PENDING ──(webhook / demo pay)──▶ PAID ──▶ QUEUED ──
 
 - WhatsApp is implemented but far less exercised than Telegram.
 - Handlers make synchronous DB and CUPS calls on the event loop; non-equality filters in the shim are O(collection).
-- The Windows agent is verified by unit tests only: no real paper output, no live-backend pairing, unsigned exe.
 - Telegram polling runs in the API process, so scaling to several replicas needs a webhook, or a single poller.

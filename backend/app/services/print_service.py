@@ -25,16 +25,6 @@ try:
 except ImportError:
     HAS_PYCUPS = False
 
-AGENT_STALE_SECONDS = 90  # an agent printer not seen in a heartbeat for this long is unreachable
-
-
-def printer_reachable(p: Printer) -> bool:
-    """Local (CUPS) printers are always reachable; agent printers only while heartbeats arrive."""
-    if not p.agent_id:
-        return True
-    return bool(p.last_seen_at) and (datetime.utcnow() - p.last_seen_at).total_seconds() <= AGENT_STALE_SECONDS
-
-
 class PrintService:
     """PrintQueue & CUPS Printer Subsystem Abstraction."""
 
@@ -101,7 +91,7 @@ class PrintService:
         """
         candidates = []
         for p in db.query(Printer).all():
-            if not p.is_online or not printer_reachable(p):
+            if not p.is_online:
                 continue
             if (color_mode or "").upper() == "COLOR" and not p.is_color_supported:
                 continue
@@ -217,9 +207,7 @@ class PrintService:
             return False
 
         printer = db.query(Printer).filter(Printer.id == job.printer_id).first() if job.printer_id else None
-        if printer and printer.agent_id and printer.is_online and printer_reachable(printer):
-            return False  # stays QUEUED: the paired agent claims it (see agent_service.claim_next_job)
-        if db.query(Printer).count() > 0 and (not printer or not printer.is_online or not printer_reachable(printer)):
+        if db.query(Printer).count() > 0 and (not printer or not printer.is_online):
             # Assigned printer is off (or none yet): move to any online printer, else keep waiting.
             printer = cls.pick_printer(db, job.color_mode, job.paper_size)
             if not printer:
@@ -230,8 +218,6 @@ class PrintService:
             if order:
                 order.printer_id = printer.id
             db.commit()
-            if printer.agent_id:
-                return False  # re-assigned to an agent printer; the agent will claim it
 
         if not order or not order.printable_pdf_path or not os.path.exists(order.printable_pdf_path):
             job.status = "FAILED"

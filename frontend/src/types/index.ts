@@ -80,24 +80,8 @@ export interface Printer {
   is_color_supported: boolean;
   supported_paper_sizes: string;
   current_job_id?: string;
-  agent_id?: number | null;
-  last_seen_at?: string | null;
   total_printed_jobs: number;
   updated_at: string;
-}
-
-export interface Agent {
-  id: number;
-  name: string;
-  platform?: string | null;
-  device_name?: string | null;
-  app_version?: string | null;
-  is_paired: boolean;
-  is_online: boolean;
-  last_seen_at?: string | null;
-  paired_at?: string | null;
-  pairing_expires_at?: string | null;
-  printer_count: number;
 }
 
 export interface PricingRule {

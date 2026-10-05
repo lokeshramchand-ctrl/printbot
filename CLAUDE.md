@@ -9,7 +9,6 @@ in a print queue managed from a **React admin dashboard**.
   razorpay SDK, python-jose + passlib/bcrypt (admin JWT), websockets.
 - **DB** — MongoDB (Atlas, `MONGODB_URI`) via a **custom SQLAlchemy-to-Mongo shim** (see below).
 - **Frontend** `frontend/` — React 18 + Vite + TypeScript + Tailwind (black/gold theme), axios.
-- **Print agents** — external clients (no longer in this repo) speak the `/api/agent/*` protocol.
 - **Deploy** — `docker-compose.yml`: local **MongoDB 7 (auth on, least-privilege app user)**, backend :8000, frontend nginx :80, and a one-shot `tests` service.
 
 ## Run
@@ -52,7 +51,6 @@ Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Sett
   `execute_print_job` (CUPS via pycups, or simulated when `USE_VIRTUAL_PRINTER=True`).
 - `serial_service.py` / `pdf_stamp_service.py` — order serial `PB-YYYYMMDD-NNNNNN`, stamped once on the
   *printable* PDF only (never the original upload). README documents the design in detail.
-- `services/agent_service.py` + `api/agents.py` — **print agents** (external PC/phone apps). Dashboard creates an agent → one-time pairing code → app gets a bearer token (SHA-256 stored). `POST /api/agent/heartbeat` upserts printers (`Printer.agent_id`, `last_seen_at`; stale > 90 s = unreachable), `POST /api/agent/jobs/claim` atomically flips QUEUED→PRINTING for the agent's printers, `GET …/file`, `POST …/report` (COMPLETED/FAILED). `execute_print_job` never prints on agent printers locally; jobs wait QUEUED for the claim. Claimed jobs of a silent agent (10 min) are re-queued.
 - `websocket_service.py` — broadcasts events to the dashboard.
 
 
@@ -89,10 +87,6 @@ through `services/messenger.py` (channel-aware). Telegram is the primary channel
 - Never point tests at Atlas; live runs use whatever `MONGODB_*` is in `backend/.env`.
 
 ## Known remaining gaps
-- Windows agent: pairing + heartbeat + claim/print/report verified live (`e2e_live.py`, real spooler job to a
-  file-port "Microsoft Print To PDF" printer). Not tried on a physical paper printer. `sign.ps1` signs with a real
-  cert via `PRINTBOT_SIGN_PFX`/`PRINTBOT_SIGN_PASSWORD`, else a self-signed dev cert, which still triggers
-  SmartScreen; a CA-issued cert is needed to clear it.
 - WhatsApp path is implemented but far less exercised than Telegram.
 - Handlers still make synchronous DB calls on the event loop; Mongo shim is O(collection) for non-equality filters.
 - Telegram bot token must be rotated if it was ever pasted into a README/chat (BotFather `/revoke`).
