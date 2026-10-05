@@ -45,7 +45,7 @@
   - `pricing_service.py` — `calculate_price(db, paper, color, sides, pages, copies)`.
   - `razorpay_service.py`, `payment_service.py` — payment links, `confirm_payment`.
   - `print_service.py` — printer sync, `submit_job`, `execute_print_job`.
-  - `serial_service.py`, `pdf_stamp_service.py` — order serial and page stamp.
+  - `serial_service.py`, `pdf_stamp_service.py` — order serial, pickup code, and the print-ready PDF (cover sheet, copies, duplex padding, page stamps).
   - `websocket_service.py` — live dashboard events.
 - `models/` — Customer, Order, PrintJob, Payment, Printer, PricingRule, OrderStatusHistory, Message, WebhookEvent, SerialCounter, Admin.
 - `db_schema.py` — collection validators, indexes, TTLs.
@@ -81,6 +81,18 @@ PAYMENT_PENDING ──(webhook / demo pay)──▶ PAID ──▶ QUEUED ──
 - `serial_counters` holds one document per UTC day plus a `QUEUE_SEQ` document. `_atomic_increment` does a single `find_one_and_update` with `$inc`, so concurrent callers never get the same value. On first use of a key it inserts the row (with an integer `id`) and the unique index on `date_key` arbitrates a creation race.
 - The serial is generated once per order and reused on retry. `queue_sequence` gives strict submission ordering across day boundaries.
 - `pdf_stamp_service` stamps the serial on the printable PDF only, never the uploaded original, once (`serial_stamped_at`). It draws with `insert_text` at an explicit baseline, because `insert_textbox` fails silently when the text doesn't fit.
+
+### Print-ready PDF and pickup code
+
+- `get_or_create_pickup_code` gives each order a 4-character code from an alphabet without I/L/O/0/1, checked for uniqueness against existing orders (5 or 6 characters if the space gets crowded). It is created with the serial in `submit_job` and reused on retry. A non-unique partial index (`ix_order_pickup_code`) supports the lookup.
+- `prepare_print_ready_pdf` runs once per order (guarded by `serial_stamped_at`) and rewrites the printable PDF atomically (temp file then `os.replace`):
+  1. optional cover sheet (big pickup code, order summary), with a blank back when double-sided;
+  2. each copy written out in full, so every copy carries its own `Copy n/m` stamp;
+  3. on double-sided jobs, `Sheet n/m F|B` in the stamp and a stamped `Blank back` page after odd-length copies (not after the last one);
+  4. `garbage=4` on save merges the duplicate objects created by repeating copies.
+- `Order.stamped_copies` is the number of copies baked into the file. `execute_print_job` sends CUPS `copies = job.copies // stamped_copies`, so copies are never multiplied twice. If `pages x copies` exceeds `MAX_EXPANDED_PAGES` (1500) the file is stamped once, `stamped_copies` is 1 and the driver does the copies.
+- The cover sheet is added when `COVER_SHEET_ENABLED` and the order has at least `COVER_SHEET_MIN_PAGES` pages. The flag is toggled at runtime from `PUT /api/settings` (`cover_sheet_enabled`).
+- Customer messages use `payment_service.reference_lines(order)` (pickup code and serial).
 
 ## 7. The Mongo shim
 

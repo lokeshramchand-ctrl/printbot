@@ -1,3 +1,4 @@
+import sys
 """End-to-end: every document in TESTDATA_DIR goes through the whole bot flow and prints.
 
 Drop PDF/DOC/DOCX/JPG/PNG files into ``testdata/`` (mounted at /testdata in docker). With none
@@ -55,6 +56,9 @@ async def test_document_flows_through_bot_payment_and_print(setup_db, monkeypatc
         return True
 
     monkeypatch.setattr(telegram_service, "download_incoming_file", download)
+
+    # Printing deletes the files at once; keep them so the printed PDF can be inspected.
+    monkeypatch.setattr(sys.modules["app.services.print_service"], "purge_order_files", lambda order: None)
 
     await say(db, "/start")
     await say(db, document=source.name)

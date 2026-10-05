@@ -108,7 +108,8 @@ async def execute_order_action(
         success = print_service.execute_print_job(db, print_job.id)
 
         if success and order.customer:
-            pickup_note = f" Show reference *{order.print_serial}* at pickup." if order.print_serial else ""
+            pickup_note = (f" Pickup code: *{order.pickup_code}*." if order.pickup_code else
+                           (f" Show reference *{order.print_serial}* at pickup." if order.print_serial else ""))
             await messenger.send_message(
                 order.customer,
                 f"✅ *Order #{order.id} update:* Your document has been printed and is ready for pickup!{pickup_note}"

@@ -49,7 +49,9 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 
 ### 5.3 Printing
 - FR-13 Convert every upload to a printable PDF; apply page range and copies.
-- FR-14 Stamp a unique serial (`PB-YYYYMMDD-NNNNNN`) on each printed page, once, without modifying the original upload.
+- FR-14 Stamp a unique serial (`PB-YYYYMMDD-NNNNNN`) on each printed page, once, without modifying the original upload. The stamp also carries the copy (`Copy n/m`), the sheet and side on double-sided jobs (`Sheet n/m F|B`) and the page (`Pg n/m`), so a loose page can be matched to its order, copy and sheet.
+- FR-14a Every order gets a short pickup code (4 characters, e.g. `K7M2`, no look-alike characters). It is sent to the customer when the order is queued and when it is printed, shown in the dashboard, and printed in large type on a cover sheet on top of the stack for orders of 2 or more pages. The cover sheet can be switched off in dashboard Settings.
+- FR-14b Copies are written out in the printable PDF so each is individually stamped; double-sided jobs pad odd-length documents with a stamped blank back page so every copy starts on a fresh sheet.
 - FR-15 Jobs are queued in strict submission order; failed jobs can be retried without a new serial or double stamping.
 - FR-16 Print through CUPS printers; a virtual printer for demo and test.
 
@@ -80,7 +82,7 @@ Walk-in print shops lose time and accuracy on: customers sending files over chat
 
 ## 8. Status (2026-10)
 
-- Telegram flow, demo and Razorpay payment, admin dashboard, serial stamping, retention and schema validation are implemented.
+- Telegram flow, demo and Razorpay payment, admin dashboard, serial stamping, pickup codes and cover sheets, retention and schema validation are implemented.
 - Test suite: 67 tests pass against real MongoDB in Docker.
 - WhatsApp is implemented but lightly tested.
 

@@ -84,6 +84,9 @@ export const PrintQueue: React.FC = () => {
                   <div className="text-xs text-zinc-400">
                     {order.total_pages} pgs &bull; {order.copies} cps &bull; {order.paper_size} ({order.color_mode})
                   </div>
+                  {order.pickup_code && (
+                    <div className="text-[11px] font-mono font-bold text-gold-300 pt-0.5">Pickup code: {order.pickup_code}</div>
+                  )}
                   {order.print_serial && (
                     <div className="text-[11px] font-mono text-gold-400/80 pt-0.5">Serial: {order.print_serial}</div>
                   )}

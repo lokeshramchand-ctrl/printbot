@@ -47,6 +47,11 @@ class Order(Base):
     # stack back to the correct order at a glance.
     print_serial = Column(String(40), unique=True, nullable=True, index=True)
     serial_stamped_at = Column(DateTime, nullable=True)  # set once the PDF has been stamped (idempotency guard)
+    # Short, easy-to-quote code (e.g. K7M2) printed large on the cover sheet and sent to the customer.
+    pickup_code = Column(String(8), nullable=True, index=True)
+    # Number of copies baked into the printable PDF (== copies when expanded, 1 otherwise).
+    # The printer driver's copies option is divided by this so copies are never doubled.
+    stamped_copies = Column(Integer, nullable=True)
     
     files_purged_at = Column(DateTime, nullable=True)  # set by the retention job once uploads are deleted
 

@@ -115,6 +115,8 @@ INDEXES: list[tuple[str, list[tuple[str, int]], dict[str, Any]]] = [
      {"unique": True, "name": "uq_customer_telegram", "partialFilterExpression": _string_partial("telegram_chat_id")}),
     ("orders", [("print_serial", ASCENDING)],
      {"unique": True, "name": "uq_order_print_serial", "partialFilterExpression": _string_partial("print_serial")}),
+    ("orders", [("pickup_code", ASCENDING)],
+     {"name": "ix_order_pickup_code", "partialFilterExpression": _string_partial("pickup_code")}),
     ("orders", [("created_at", DESCENDING)], {"name": "ix_order_created"}),
     ("orders", [("current_state", ASCENDING), ("created_at", DESCENDING)], {"name": "ix_order_state_created"}),
     ("orders", [("customer_id", ASCENDING), ("created_at", DESCENDING)], {"name": "ix_order_customer_created"}),

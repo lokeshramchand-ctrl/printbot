@@ -132,7 +132,7 @@ async def confirm_payment(
     db.refresh(order)
 
     if order.current_state == "COMPLETED" and customer:
-        serial = f"\n🔖 Reference: *{order.print_serial}*" if order.print_serial else ""
+        serial = reference_lines(order)
         await messenger.send_message(
             customer,
             f"🖨️ *Print complete!*\n\nOrder *#{order.id}* is ready for pickup.{serial}\n\n"
@@ -140,11 +140,11 @@ async def confirm_payment(
     elif order.current_state == "QUEUED" and customer and job.printer_id:
         await messenger.send_message(
             customer,
-            f"⏳ Order *#{order.id}* is paid and in the print queue. We'll message you when it's printed.")
+            f"⏳ Order *#{order.id}* is paid and in the print queue.{reference_lines(order)}\nWe'll message you when it's printed.")
     elif order.current_state == "QUEUED" and customer:
         await messenger.send_message(
             customer,
-            f"⏳ Order *#{order.id}* is paid and in the print queue. "
+            f"⏳ Order *#{order.id}* is paid and in the print queue.{reference_lines(order)}\n"
             "Our printers are off right now; it will print automatically as soon as one is back on.")
     elif customer:
         await messenger.send_message(
@@ -157,11 +157,21 @@ async def confirm_payment(
     return {"status": "paid", "order_state": order.current_state}
 
 
+def reference_lines(order: Order) -> str:
+    """Pickup code (quote it at the counter) and serial (printed on every page), as message lines."""
+    out = ""
+    if order.pickup_code:
+        out += f"\n🔑 Pickup code: *{order.pickup_code}*"
+    if order.print_serial:
+        out += f"\n🔖 Reference: *{order.print_serial}*"
+    return out
+
+
 async def notify_print_result(order: Order, success: bool) -> None:
     """Tell the customer (and the dashboard) how their print ended."""
     customer = order.customer
     if customer and success:
-        serial = f"\n🔖 Reference: *{order.print_serial}*" if order.print_serial else ""
+        serial = reference_lines(order)
         await messenger.send_message(
             customer,
             f"🖨️ *Print complete!*\n\nOrder *#{order.id}* is ready for pickup.{serial}\n\n"

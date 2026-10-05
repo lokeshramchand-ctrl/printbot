@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     # PB-YYYYMMDD-NNNNNN reference stamped on every printed page.
     SERIAL_PREFIX: str = "PB"
 
+    # Separator/cover sheet with a large pickup code printed on top of each order's stack.
+    # Only used for orders with at least COVER_SHEET_MIN_PAGES pages (dashboard-toggleable).
+    COVER_SHEET_ENABLED: bool = True
+    COVER_SHEET_MIN_PAGES: int = 2
+    # Copies are expanded into the PDF (so each carries its own "Copy n/m" stamp) up to this many pages.
+    MAX_EXPANDED_PAGES: int = 1500
+
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
         env_file_encoding="utf-8",

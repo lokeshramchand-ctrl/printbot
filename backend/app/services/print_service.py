@@ -9,9 +9,9 @@ from app.models.printer import Printer
 from app.models.print_job import PrintJob
 from app.models.order import Order
 from app.models.history import OrderStatusHistory
-from app.services.serial_service import get_or_create_order_serial, allocate_queue_sequence
+from app.services.serial_service import get_or_create_order_serial, get_or_create_pickup_code, allocate_queue_sequence
 from app.services.cleanup_service import purge_order_files
-from app.services.pdf_stamp_service import stamp_printable_pdf, customer_label_for
+from app.services.pdf_stamp_service import prepare_print_ready_pdf, customer_label_for
 
 logger = logging.getLogger("print_service")
 
@@ -123,6 +123,16 @@ class PrintService:
                     printed.append(job.order_id)
         return printed
 
+    @staticmethod
+    def _cover_lines(order: Order) -> List[str]:
+        sides = "Double-sided" if (order.sides or "").lower() == "double" else "Single-sided"
+        color = "Colour" if (order.color_mode or "").upper() == "COLOR" else "B&W"
+        return [
+            f"Order {order.id}",
+            f"{order.total_pages} page(s)  x  {order.copies} cop{'y' if order.copies == 1 else 'ies'}",
+            f"{order.paper_size}  |  {color}  |  {sides}",
+        ]
+
     @classmethod
     def submit_job(cls, db: Session, order: Order, target_printer_id: Optional[int] = None) -> PrintJob:
         """
@@ -140,11 +150,19 @@ class PrintService:
         # --- Serial numbering: order-level, idempotent (see serial_service) ---
         serial = get_or_create_order_serial(db, order)
 
+        pickup_code = get_or_create_pickup_code(db, order)
+
         if not order.serial_stamped_at and order.printable_pdf_path and os.path.exists(order.printable_pdf_path):
             customer_label = customer_label_for(order.customer)
-            stamped = stamp_printable_pdf(order.printable_pdf_path, serial, customer_label, when=order.created_at)
-            if stamped:
+            cover_lines = None
+            if settings.COVER_SHEET_ENABLED and (order.total_pages or 0) >= settings.COVER_SHEET_MIN_PAGES:
+                cover_lines = cls._cover_lines(order)
+            baked = prepare_print_ready_pdf(
+                order.printable_pdf_path, serial, customer_label, when=order.created_at,
+                copies=order.copies, sides=order.sides, pickup_code=pickup_code, cover_lines=cover_lines)
+            if baked:
                 order.serial_stamped_at = datetime.utcnow()
+                order.stamped_copies = baked
                 db.add(order)
                 db.commit()
             else:
@@ -243,8 +261,10 @@ class PrintService:
         db.commit()
 
         pdf_path = order.printable_pdf_path
+        # Copies already written into the PDF (see pdf_stamp_service) must not be multiplied again.
+        driver_copies = max(1, (job.copies or 1) // (order.stamped_copies or 1))
         options = {
-            "copies": str(job.copies),
+            "copies": str(driver_copies),
             "media": job.paper_size,
             "ColorModel": "Color" if job.color_mode.upper() == "COLOR" else "Gray",
             "sides": "two-sided-long-edge" if job.sides.lower() == "double" else "one-sided"

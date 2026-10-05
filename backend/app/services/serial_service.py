@@ -32,6 +32,7 @@ full write-up of alternatives considered):
   it is independent of the human-readable serial so that queue
   ordering survives even across a day boundary.
 """
+import secrets
 from datetime import datetime, timezone
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -110,6 +111,30 @@ def get_or_create_order_serial(db, order: Order) -> str:
     db.commit()
     db.refresh(order)
     return order.print_serial
+
+
+# No I/L/O/0/1: easy to read off a phone screen and to say aloud at the counter.
+PICKUP_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def allocate_pickup_code(db) -> str:
+    """Random 4-char code, unique among all orders (falls back to 5 chars if the space gets crowded)."""
+    for length in (4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 6):
+        code = "".join(secrets.choice(PICKUP_ALPHABET) for _ in range(length))
+        if db.query(Order).filter(Order.pickup_code == code).first() is None:
+            return code
+    raise RuntimeError("Unable to allocate a unique pickup code")
+
+
+def get_or_create_pickup_code(db, order: Order) -> str:
+    """Idempotent, like get_or_create_order_serial: one code per order for its lifetime."""
+    if order.pickup_code:
+        return order.pickup_code
+    order.pickup_code = allocate_pickup_code(db)
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order.pickup_code
 
 
 def allocate_order_id(db) -> str:

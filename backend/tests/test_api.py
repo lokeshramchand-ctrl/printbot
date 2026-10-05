@@ -1,3 +1,4 @@
+import sys
 """Admin API, WebSocket auth, webhook hardening and retention against in-memory Mongo."""
 import hashlib
 import hmac
@@ -124,7 +125,21 @@ def test_uploads_are_not_publicly_served(client):
     assert client.get("/storage/processed/PRN-1/printable.pdf").status_code == 404
 
 
-async def test_retention_deletes_old_finished_order_files(setup_db, tg):
+async def test_files_are_deleted_immediately_after_printing(setup_db, tg):
+    db = setup_db
+    await upto_sides(db)
+    await say(db, button="SIDES_SINGLE")
+    order_id = db.query(Order).first().id
+    stored = db.query(Order).first().stored_file_path
+    await say(db, button=f"DEMO_PAY_{order_id}")
+    order = db.query(Order).filter(Order.id == order_id).first()
+    assert order.current_state == "COMPLETED" and order.files_purged_at
+    assert not os.path.exists(stored) and not os.path.exists(order.printable_pdf_path)
+
+
+async def test_retention_deletes_old_finished_order_files(setup_db, tg, monkeypatch):
+    # Printing purges files at once; disable that here to exercise the retention sweep on its own.
+    monkeypatch.setattr(sys.modules["app.services.print_service"], "purge_order_files", lambda order: None)
     db = setup_db
     await upto_sides(db)
     await say(db, button="SIDES_SINGLE")

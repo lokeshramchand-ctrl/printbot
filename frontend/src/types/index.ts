@@ -32,6 +32,7 @@ export interface Order {
   current_state: string;
   print_status: 'NOT_QUEUED' | 'QUEUED' | 'PRINTING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   print_serial?: string;
+  pickup_code?: string;
   failure_reason?: string;
   created_at: string;
   updated_at: string;

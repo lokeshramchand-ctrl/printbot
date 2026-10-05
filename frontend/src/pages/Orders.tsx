@@ -125,6 +125,9 @@ export const Orders: React.FC = () => {
                 <tr key={order.id} className="hover:bg-zinc-900/40 transition">
                   <td className="py-3.5 px-4 font-mono font-bold text-gold-400">
                     {order.id}
+                    {order.pickup_code && (
+                      <div className="text-[11px] font-bold text-gold-300 mt-0.5">Pickup {order.pickup_code}</div>
+                    )}
                     {order.print_serial && (
                       <div className="text-[10px] font-normal text-zinc-500 mt-0.5">{order.print_serial}</div>
                     )}

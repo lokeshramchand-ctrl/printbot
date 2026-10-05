@@ -640,7 +640,8 @@ class BotStateMachine:
         if not order:
             await self._send_message(customer, "ℹ️ You don't have any print orders yet. Send a document to start!")
             return
-        serial = f"\n🔖 Reference: {order.print_serial}" if order.print_serial else ""
+        serial = (f"\n🔑 Pickup code: {order.pickup_code}" if order.pickup_code else "") + \
+            (f"\n🔖 Reference: {order.print_serial}" if order.print_serial else "")
         await self._send_message(
             customer,
             f"📊 *Order Status #{order.id}*\n\n"

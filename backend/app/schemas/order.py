@@ -31,6 +31,7 @@ class OrderOut(BaseModel):
     current_state: str
     print_status: str
     print_serial: Optional[str] = None
+    pickup_code: Optional[str] = None
     failure_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime

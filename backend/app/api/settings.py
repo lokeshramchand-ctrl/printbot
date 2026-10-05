@@ -13,6 +13,7 @@ class SettingsUpdate(BaseModel):
     pickup_address: Optional[str] = None
     file_retention_days: Optional[int] = None
     use_virtual_printer: Optional[bool] = None
+    cover_sheet_enabled: Optional[bool] = None
 
 @router.get("")
 def get_system_settings(current_admin: Admin = Depends(get_current_admin)):
@@ -24,6 +25,7 @@ def get_system_settings(current_admin: Admin = Depends(get_current_admin)):
         "file_retention_days": settings.FILE_RETENTION_DAYS,
         "max_file_size_mb": settings.MAX_FILE_SIZE_MB,
         "use_virtual_printer": settings.USE_VIRTUAL_PRINTER,
+        "cover_sheet_enabled": settings.COVER_SHEET_ENABLED,
         "cups_host": settings.CUPS_HOST,
         "whatsapp_phone_number_id": settings.WHATSAPP_PHONE_NUMBER_ID,
         "telegram_bot_token": settings.TELEGRAM_BOT_TOKEN[:10] + "..." if settings.TELEGRAM_BOT_TOKEN else "Not Configured",
@@ -48,6 +50,8 @@ def update_system_settings(
         settings.FILE_RETENTION_DAYS = req.file_retention_days
     if req.use_virtual_printer is not None:
         settings.USE_VIRTUAL_PRINTER = req.use_virtual_printer
+    if req.cover_sheet_enabled is not None:
+        settings.COVER_SHEET_ENABLED = req.cover_sheet_enabled
 
     return {
         "status": "success",
@@ -57,6 +61,7 @@ def update_system_settings(
             "business_phone": settings.BUSINESS_PHONE,
             "pickup_address": settings.PICKUP_ADDRESS,
             "file_retention_days": settings.FILE_RETENTION_DAYS,
-            "use_virtual_printer": settings.USE_VIRTUAL_PRINTER
+            "use_virtual_printer": settings.USE_VIRTUAL_PRINTER,
+            "cover_sheet_enabled": settings.COVER_SHEET_ENABLED
         }
     }

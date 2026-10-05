@@ -58,7 +58,7 @@ Customer journey:
 4. The bot shows an order summary with the total price.
 5. The customer pays through a Razorpay payment link (or the demo button in development).
 6. On confirmed payment the order is queued and printed. The customer is notified at payment, print start, completion and failure.
-7. The customer collects the print and can quote the printed serial number at the counter.
+7. The customer collects the print and can quote the short pickup code (for example `K7M2`) or the printed serial number at the counter.
 
 Bot commands work at any step: `CANCEL` (or `STOP`), `RESTART` (or `RESET`, `/start`), `STATUS`, and `HELP`. The conversation never dead-ends: invalid input, such as an unparseable page range, re-prompts instead of falling back to a default.
 
@@ -78,7 +78,7 @@ Payments
 
 Printing
 - Page range and copies are applied to the printable PDF.
-- Each printed page is stamped once with a unique order serial, without modifying the customer's original upload.
+- Each printed page is stamped once with a unique order serial, copy, sheet/side and page, without modifying the customer's original upload. Orders of 2+ pages get a cover sheet with a large pickup code.
 - Jobs are queued in strict submission order. Failed jobs can be retried without a new serial and without double stamping.
 - Printing goes through CUPS (pycups), or a virtual printer for demo and tests.
 
@@ -227,7 +227,13 @@ Once several orders are queued, staff taking pages off the printer need a fast w
 - Customer label: never the raw phone number or chat id. A short internal label such as `T-57` (Telegram) or `W-102` (WhatsApp) is used.
 - Visibility: shown in the Orders table, the order detail dialog and the Print Queue, and included in the pickup notification to the customer.
 
-Multi-copy printing relies on the printer driver's own copies option. All physical copies of one order carry an identical stamp, which is enough to reunite a loose page with its order but does not distinguish copy 1 from copy 2.
+### Copies, double-sided sheets and the pickup code
+
+- Copies are written out in the printable PDF (so the driver is sent one copy), and each page is stamped `Copy n/m`. Above `MAX_EXPANDED_PAGES` (default 1500 pages in total) the PDF is stamped once and the driver's copies option is used instead; `Order.stamped_copies` records which happened.
+- Double-sided jobs add `Sheet n/m F|B` (front/back) to the stamp. An odd-length document gets a stamped `Blank back` page so the next copy starts on a fresh sheet.
+- Every order gets a 4-character `pickup_code` (for example `K7M2`, no I/L/O/0/1). It is sent to the customer when the order is queued and when it is printed, shown in the dashboard, and printed in large type on a cover sheet on top of the stack.
+- The cover sheet is added for orders of `COVER_SHEET_MIN_PAGES` (default 2) or more pages and can be switched off in dashboard Settings (`COVER_SHEET_ENABLED`).
+- Everything is built once, guarded by `serial_stamped_at`, so retries never add a second cover or stamp.
 
 ## Security and privacy
 

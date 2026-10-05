@@ -47,10 +47,14 @@ Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Sett
 - `document_service.py` — converts PDF/DOC/DOCX/JPG/PNG to a printable PDF, counts pages.
 - `pricing_service.py` — `PricingRule` rows; `calculate_price(db, paper, color, sides, pages, copies)`.
 - `razorpay_service.py` / `payment_service.py` — payment links, signed webhook, shared `confirm_payment` (see Payments).
-- `print_service.py` — printer sync, `submit_job` (serial + stamp + queue sequence),
+- `print_service.py` — printer sync, `submit_job` (serial + pickup code + print-ready PDF + queue sequence),
   `execute_print_job` (CUPS via pycups, or simulated when `USE_VIRTUAL_PRINTER=True`).
-- `serial_service.py` / `pdf_stamp_service.py` — order serial `PB-YYYYMMDD-NNNNNN`, stamped once on the
-  *printable* PDF only (never the original upload). README documents the design in detail.
+- `serial_service.py` / `pdf_stamp_service.py` — order serial `PB-YYYYMMDD-NNNNNN` and a 4-char `pickup_code`
+  (e.g. `K7M2`). `prepare_print_ready_pdf` rewrites the *printable* PDF once (never the original upload): optional
+  cover sheet with the big pickup code, copies expanded in the file (`Copy n/m`), duplex `Sheet n/m F|B` plus
+  stamped `Blank back` padding, a stamp on every page. `Order.stamped_copies` records copies baked in, so the CUPS
+  copies option is divided by it. Cover sheet: `COVER_SHEET_ENABLED` (dashboard Settings) for orders >= `COVER_SHEET_MIN_PAGES`;
+  jobs over `MAX_EXPANDED_PAGES` fall back to driver copies. README documents the design in detail.
 - `websocket_service.py` — broadcasts events to the dashboard.
 
 
@@ -81,7 +85,8 @@ through `services/messenger.py` (channel-aware). Telegram is the primary channel
 ## Testing
 - `docker compose up --build` runs the whole suite against **real Mongo** (`printbot_test` db) plus HTTP smoke tests on the live backend and the end-to-end file test over every file in `./testdata`.
 - `cd backend && python -m pytest tests` — runs on in-memory Mongo (`MONGODB_URI=mongomock://…`, set in `tests/conftest.py`).
-  Covers bot flows (fake Telegram), demo + Razorpay payment, admin API, WS auth, retention, serial numbering.
+  Covers bot flows (fake Telegram), demo + Razorpay payment, admin API, WS auth, retention, serial numbering,
+  print-ready PDF (copies, duplex, cover sheet, pickup code).
 - Live Telegram checklist: start backend (polling starts automatically) → /start → send a PDF → buttons → tap
   *Pay (Demo)* → expect "Print complete" → check order in dashboard.
 - Never point tests at Atlas; live runs use whatever `MONGODB_*` is in `backend/.env`.

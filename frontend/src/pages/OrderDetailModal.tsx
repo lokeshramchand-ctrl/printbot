@@ -90,6 +90,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({ orderId, onC
             <p className="text-xs text-zinc-400 mt-1">Order Details &amp; History Audit Trail</p>
             {order?.print_serial && (
               <p className="text-xs text-gold-400/90 mt-1.5 font-mono tracking-wide">
+                {order.pickup_code && <>Pickup code <span className="font-semibold">{order.pickup_code}</span> &bull; </>}
                 Print serial <span className="font-semibold">{order.print_serial}</span> — stamped on every printed page
               </p>
             )}

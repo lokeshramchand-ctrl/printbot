@@ -8,6 +8,7 @@ export const Settings: React.FC = () => {
   const [pickupAddress, setPickupAddress] = useState('');
   const [fileRetentionDays, setFileRetentionDays] = useState(7);
   const [useVirtualPrinter, setUseVirtualPrinter] = useState(true);
+  const [coverSheetEnabled, setCoverSheetEnabled] = useState(true);
   const [whatsappPhoneId, setWhatsappPhoneId] = useState('');
   const [razorpayKeyId, setRazorpayKeyId] = useState('');
   const [paymentMode, setPaymentMode] = useState('demo');
@@ -22,6 +23,7 @@ export const Settings: React.FC = () => {
       setPickupAddress(data.pickup_address || '');
       setFileRetentionDays(data.file_retention_days || 7);
       setUseVirtualPrinter(data.use_virtual_printer ?? true);
+      setCoverSheetEnabled(data.cover_sheet_enabled ?? true);
       setWhatsappPhoneId(data.whatsapp_phone_number_id || '');
       setRazorpayKeyId(data.razorpay_key_id || '');
       setPaymentMode(data.payment_mode || 'demo');
@@ -43,6 +45,7 @@ export const Settings: React.FC = () => {
         pickup_address: pickupAddress,
         file_retention_days: Number(fileRetentionDays),
         use_virtual_printer: useVirtualPrinter,
+        cover_sheet_enabled: coverSheetEnabled,
       });
       setSavedMessage('Settings saved successfully!');
       setTimeout(() => setSavedMessage(null), 3000);
@@ -162,6 +165,19 @@ export const Settings: React.FC = () => {
               />
               <label htmlFor="virtualPrinter" className="text-sm font-medium text-zinc-200 cursor-pointer">
                 Use Virtual Printer Driver Fallback (Simulated Execution)
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="coverSheet"
+                checked={coverSheetEnabled}
+                onChange={(e) => setCoverSheetEnabled(e.target.checked)}
+                className="w-5 h-5 rounded border-zinc-700 bg-zinc-900 text-gold-600 focus:ring-gold-500"
+              />
+              <label htmlFor="coverSheet" className="text-sm font-medium text-zinc-200 cursor-pointer">
+                Print a cover sheet with the pickup code on orders of 2+ pages
               </label>
             </div>
           </div>
