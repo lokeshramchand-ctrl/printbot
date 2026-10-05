@@ -1,6 +1,9 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
+
+ConnectionType = Literal["CUPS", "WIFI", "BLUETOOTH", "USB"]
+
 
 class PrinterCreate(BaseModel):
     name: str
@@ -11,6 +14,8 @@ class PrinterCreate(BaseModel):
     supported_paper_sizes: str = "A4,A3,Letter"
     is_default: bool = False
     is_online: bool = True
+    connection_type: ConnectionType = "CUPS"
+    connection_uri: Optional[str] = None
 
 class PrinterUpdate(BaseModel):
     name: Optional[str] = None
@@ -22,6 +27,8 @@ class PrinterUpdate(BaseModel):
     supported_paper_sizes: Optional[str] = None
     is_default: Optional[bool] = None
     cups_name: Optional[str] = None
+    connection_type: Optional[ConnectionType] = None
+    connection_uri: Optional[str] = None
 
 class PrinterOut(BaseModel):
     id: int
@@ -36,6 +43,8 @@ class PrinterOut(BaseModel):
     supported_paper_sizes: str
     current_job_id: Optional[str] = None
     total_printed_jobs: int
+    connection_type: Optional[str] = "CUPS"
+    connection_uri: Optional[str] = None
     updated_at: datetime
 
     class Config:

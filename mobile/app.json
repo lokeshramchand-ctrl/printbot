@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "PrintBot",
+    "slug": "printbot",
+    "scheme": "printbot",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#09090b",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "in.printbot.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "PrintBot scans for nearby Bluetooth printers so you can add them to your print shop.",
+        "NSLocalNetworkUsageDescription": "PrintBot looks for Wi-Fi printers on your local network (Bonjour / IPP).",
+        "NSBonjourServices": [
+          "_ipp._tcp",
+          "_ipps._tcp",
+          "_printer._tcp",
+          "_pdl-datastream._tcp"
+        ],
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "in.printbot.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#09090b",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_WIFI_STATE",
+        "CHANGE_WIFI_MULTICAST_STATE",
+        "ACCESS_FINE_LOCATION",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [],
+          "bluetoothAlwaysPermission": "PrintBot scans for nearby Bluetooth printers so you can add them to your print shop."
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}

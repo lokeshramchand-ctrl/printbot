@@ -48,6 +48,13 @@ async def create_printer(
     if existing:
         raise HTTPException(status_code=400, detail=f"Printer with CUPS name '{req.cups_name}' already exists")
 
+    if req.connection_type == "WIFI":
+        if not (req.connection_uri or "").lower().startswith(("ipp://", "ipps://", "socket://", "http://", "https://")):
+            raise HTTPException(status_code=400, detail="WIFI printers need an ipp://, ipps://, socket:// or http(s):// connection_uri")
+        error = print_service.register_network_printer(req.cups_name, req.connection_uri)
+        if error:
+            raise HTTPException(status_code=502, detail=f"CUPS could not add the printer: {error}")
+
     printer = Printer(**req.model_dump())
     _apply_power_state(printer)
     db.add(printer)

@@ -9,6 +9,7 @@ in a print queue managed from a **React admin dashboard**.
   razorpay SDK, python-jose + passlib/bcrypt (admin JWT), websockets.
 - **DB** — MongoDB (Atlas, `MONGODB_URI`) via a **custom SQLAlchemy-to-Mongo shim** (see below).
 - **Frontend** `frontend/` — React 18 + Vite + TypeScript + Tailwind (black/gold theme), axios.
+- **Mobile** `mobile/` — Expo (SDK 57) + React Native + TypeScript admin app: dashboard, orders, queue, printers, pricing, customers, settings, live `/ws` feed, and printer discovery (Wi-Fi Bonjour/IPP + Bluetooth LE). Needs a dev client (native modules), not Expo Go. See `mobile/README.md`.
 - **Deploy** — `docker-compose.yml`: local **MongoDB 7 (auth on, least-privilege app user)**, backend :8000, frontend nginx :80, and a one-shot `tests` service.
 
 ## Run
@@ -55,7 +56,8 @@ Config comes from `backend/.env` (copy of root `.env`; see `.env.example`). Sett
   stamped `Blank back` padding, a stamp on every page. `Order.stamped_copies` records copies baked in, so the CUPS
   copies option is divided by it. Cover sheet: `COVER_SHEET_ENABLED` (dashboard Settings) for orders >= `COVER_SHEET_MIN_PAGES`;
   jobs over `MAX_EXPANDED_PAGES` fall back to driver copies. README documents the design in detail.
-- `websocket_service.py` — broadcasts events to the dashboard.
+- `websocket_service.py` — broadcasts events to the dashboard and the mobile app.
+- Printers carry `connection_type` (CUPS/WIFI/BLUETOOTH/USB) + `connection_uri`; a WIFI printer posted by the mobile app gets a driverless CUPS queue via `print_service.register_network_printer`. Mobile discovery code lives in `mobile/src/discovery/` (see `mobile/README.md`).
 
 
 ## Order lifecycle
@@ -92,6 +94,8 @@ through `services/messenger.py` (channel-aware). Telegram is the primary channel
 - Never point tests at Atlas; live runs use whatever `MONGODB_*` is in `backend/.env`.
 
 ## Known remaining gaps
+- Mobile app and its Wi-Fi/Bluetooth printer discovery are type-checked and unit-tested but not yet run on a physical device or real printers.
+- `POST /api/printers/{id}/test-print` only generates a PDF; it never sends it to CUPS.
 - WhatsApp path is implemented but far less exercised than Telegram.
 - Handlers still make synchronous DB calls on the event loop; Mongo shim is O(collection) for non-equality filters.
 - Telegram bot token must be rotated if it was ever pasted into a README/chat (BotFather `/revoke`).

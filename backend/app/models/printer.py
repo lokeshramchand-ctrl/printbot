@@ -17,7 +17,10 @@ class Printer(Base):
     is_default = Column(Boolean, default=False)
     is_color_supported = Column(Boolean, default=True)
     supported_paper_sizes = Column(String(100), default="A4,A3,Letter")
-    
+
+    # How the printer was reached: CUPS (already a CUPS queue), WIFI (network, IPP), BLUETOOTH, USB.
+    connection_type = Column(String(20), nullable=True, default="CUPS")
+    connection_uri = Column(String(255), nullable=True)  # e.g. ipp://192.168.1.50/ipp/print or ble://<id>
 
     current_job_id = Column(String(50), nullable=True)
     total_printed_jobs = Column(Integer, default=0)

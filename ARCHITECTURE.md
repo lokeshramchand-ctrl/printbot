@@ -9,6 +9,7 @@
                      ┌──────────────────────────────────────────┐
  Razorpay ──webhook─▶│ FastAPI backend (:8000)                  │◀── REST + WebSocket ── React dashboard
                      │  api/  → services/  → models (Mongo shim)│     (nginx :80)
+                     │                                          │◀── REST + WebSocket ── Mobile app (Expo)
                      └───────────────┬──────────────┬───────────┘
                                      │              │
                                MongoDB 7        CUPS (pycups) or
@@ -20,6 +21,7 @@
 | Backend | FastAPI, Python 3.12 | API, webhooks, Telegram long-polling task, retention job |
 | Database | MongoDB 7 | Accessed through a SQLAlchemy-style shim (`app/database.py`) |
 | Frontend | React 18, Vite, TypeScript, Tailwind | Admin dashboard, served by nginx |
+| Mobile | Expo SDK 57, React Native, TypeScript | Operator app in `mobile/`; needs a dev client (native modules) |
 | Documents | PyMuPDF, Pillow, python-docx, LibreOffice | Convert any upload to a printable PDF, count pages |
 | Payments | Razorpay (or demo mode) | Signed webhook → shared `confirm_payment` |
 | Printing | CUPS via pycups, or simulated | `USE_VIRTUAL_PRINTER` |
@@ -49,6 +51,17 @@
   - `websocket_service.py` — live dashboard events.
 - `models/` — Customer, Order, PrintJob, Payment, Printer, PricingRule, OrderStatusHistory, Message, WebhookEvent, SerialCounter, Admin.
 - `db_schema.py` — collection validators, indexes, TTLs.
+- `Printer.connection_type` (`CUPS`, `WIFI`, `BLUETOOTH`, `USB`) and `connection_uri` record how a printer was found. `POST /api/printers` with `WIFI` calls `print_service.register_network_printer`, which makes a driverless CUPS queue (`ppdname="everywhere"`); a CUPS failure returns 502 and saves nothing. `BLUETOOTH` is stored without touching CUPS.
+
+## 3a. Mobile app (`mobile/`)
+
+- Expo + React Native + React Navigation (tabs + stack), axios, the same JWT and `/ws` feed as the dashboard. Session (server URL, token) is kept in SecureStore.
+- `src/screens/` — one file per screen; `src/context/` — `AuthContext`, `LiveContext` (websocket with reconnect, ref-based listeners); `src/hooks.ts` — `useResource` (load on focus, pull to refresh, reload on live events).
+- `src/discovery/` — printer discovery:
+  - `mdns.ts` (pure) merges Bonjour records of one device (`_ipp`, `_ipps`, `_printer`, `_pdl-datastream`) and picks the best URI: ipp > ipps > socket > lpd.
+  - `ipp.ts` (pure + `fetch`) encodes/decodes IPP Get-Printer-Attributes.
+  - `wifi.ts` runs the mDNS scan and the /24 IPP sweep; `bluetooth.ts` runs the BLE scan with `printerHeuristics.ts`; `register.ts` builds the `POST /api/printers` body.
+- Checks without a device: `npm run typecheck`, `npm run selftest`.
 
 ## 4. Bot conversation
 

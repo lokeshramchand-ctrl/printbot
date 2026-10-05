@@ -82,6 +82,25 @@ class PrintService:
         return db.query(Printer).all()
 
     @classmethod
+    def register_network_printer(cls, cups_name: str, uri: str) -> Optional[str]:
+        """Create a driverless (IPP Everywhere) CUPS queue for a network printer found by the mobile app.
+
+        Returns None on success (or when CUPS is not in use), else an error message.
+        """
+        if not HAS_PYCUPS or settings.USE_VIRTUAL_PRINTER:
+            return None
+        try:
+            conn = cups.Connection(host=settings.CUPS_HOST, port=settings.CUPS_PORT)
+            if cups_name not in conn.getPrinters():
+                conn.addPrinter(cups_name, device=uri, ppdname="everywhere")
+            conn.enablePrinter(cups_name)
+            conn.acceptJobs(cups_name)
+            return None
+        except Exception as e:
+            logger.error(f"CUPS queue creation failed for {uri}: {e}")
+            return str(e)
+
+    @classmethod
     def pick_printer(cls, db: Session, color_mode: Optional[str], paper_size: Optional[str],
                      preferred_id: Optional[int] = None) -> Optional[Printer]:
         """Choose an online printer able to handle the job, or None.
