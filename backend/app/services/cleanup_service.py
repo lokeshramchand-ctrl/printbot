@@ -38,9 +38,20 @@ def _remove(path: str) -> None:
 def _order_files(order: Order) -> list[str]:
     paths = [order.stored_file_path]
     if order.printable_pdf_path:
-        paths.append(os.path.dirname(order.printable_pdf_path))  # processed/<order id>/
+        folder = os.path.dirname(order.printable_pdf_path)  # processed/<order id>/
+        # Only remove the whole folder when it is this order's own; never a shared one.
+        paths.append(folder if os.path.basename(folder) == order.id else order.printable_pdf_path)
     paths.append(os.path.join(settings.STORAGE_DIR, "previews", f"{order.id}_thumb.png"))
     return paths
+
+
+def purge_order_files(order: Order, now: datetime | None = None) -> None:
+    """Delete an order's files right now (e.g. as soon as it has printed). Caller commits."""
+    if order.files_purged_at:
+        return
+    for path in _order_files(order):
+        _remove(path)
+    order.files_purged_at = now or datetime.utcnow()
 
 
 def purge_expired_files(db, now: datetime | None = None) -> dict:

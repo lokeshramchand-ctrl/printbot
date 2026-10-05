@@ -10,6 +10,7 @@ from app.models.print_job import PrintJob
 from app.models.order import Order
 from app.models.history import OrderStatusHistory
 from app.services.serial_service import get_or_create_order_serial, allocate_queue_sequence
+from app.services.cleanup_service import purge_order_files
 from app.services.pdf_stamp_service import stamp_printable_pdf, customer_label_for
 
 logger = logging.getLogger("print_service")
@@ -286,6 +287,8 @@ class PrintService:
                 notes=f"Document printed successfully (serial {job.print_serial})."
             )
             db.add(history)
+            # Privacy: the document is spooled (CUPS copies it), so remove our copies now.
+            purge_order_files(order)
             db.commit()
             return True
         else:
